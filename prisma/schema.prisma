@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TodoPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum StudySessionSource {
+  TIMER
+  MANUAL
+  IMPORTED
+}
+
+
+
+model User {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name      String
+  email     String @unique
+  timezone  String?
+
+  todos               TodoItem[]
+  studySessions       StudySession[]
+  dailyStudySummaries DailyStudySummary[]
+  weeklyStudySummaries WeeklyStudySummary[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model TodoItem {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title          String
+  description    String?  @db.Text
+  isDone         Boolean  @default(false)
+  priority       TodoPriority @default(MEDIUM)
+  estimatedMinutes Int?
+  sortOrder      Int      @default(0)
+  dueAt          DateTime?
+  completedAt    DateTime?
+
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isDone])
+  @@index([userId, dueAt])
+  @@index([userId, createdAt])
+  @@map("todo_items")
+}
+
+model StudySession {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  startedAt DateTime
+  endedAt   DateTime?
+  durationMinutes Int
+  subject   String?
+  notes     String?  @db.Text
+  source    StudySessionSource @default(TIMER)
+
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@index([userId, source])
+  @@map("study_sessions")
+}
+
+model DailyStudySummary {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  day             DateTime @db.Date
+  studiedMinutes   Int      @default(0)
+  focusSessions    Int      @default(0)
+  todosCompleted   Int      @default(0)
+  todosPlanned     Int      @default(0)
+  note             String?  @db.Text
+
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, day])
+  @@index([userId, day])
+  @@map("daily_study_summaries")
+}
+
+model WeeklyStudySummary {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  weekStart       DateTime @db.Date
+  weekEnd         DateTime @db.Date
+  studiedMinutes  Int      @default(0)
+  focusSessions   Int      @default(0)
+  todosCompleted   Int      @default(0)
+  studyDays       Int      @default(0)
+  note            String?  @db.Text
+
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, weekStart])
+  @@index([userId, weekStart])
+  @@map("weekly_study_summaries")
+}
