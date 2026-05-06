@@ -19,6 +19,11 @@ enum StudySessionSource {
   IMPORTED
 }
 
+enum GoalCadence {
+  WEEKLY
+  MONTHLY
+}
+
 
 
 model User {
@@ -31,9 +36,12 @@ model User {
   timezone  String?
 
   todos               TodoItem[]
+  todoTags            TodoTag[]
   studySessions       StudySession[]
   dailyStudySummaries DailyStudySummary[]
   weeklyStudySummaries WeeklyStudySummary[]
+  goals               Goal[]
+  timerSettings       TimerSettings?
 
   @@index([email])
   @@map("users")
@@ -53,6 +61,9 @@ model TodoItem {
   dueAt          DateTime?
   completedAt    DateTime?
 
+  tagId String?
+  tag   TodoTag? @relation(fields: [tagId], references: [id], onDelete: SetNull)
+
   userId String
   user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -60,6 +71,24 @@ model TodoItem {
   @@index([userId, dueAt])
   @@index([userId, createdAt])
   @@map("todo_items")
+}
+
+model TodoTag {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name      String
+  slug      String
+  isBuiltin Boolean  @default(false)
+
+  userId String
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  todos  TodoItem[]
+
+  @@unique([userId, slug])
+  @@index([userId, isBuiltin])
+  @@map("todo_tags")
 }
 
 model StudySession {
@@ -121,4 +150,42 @@ model WeeklyStudySummary {
   @@unique([userId, weekStart])
   @@index([userId, weekStart])
   @@map("weekly_study_summaries")
+}
+
+model Goal {
+  id           String      @id @default(cuid())
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  title        String
+  description  String?     @db.Text
+  cadence      GoalCadence @default(WEEKLY)
+  targetValue   Int
+  currentValue  Int         @default(0)
+  unit         String      @default("sessions")
+  isArchived   Boolean     @default(false)
+
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, cadence])
+  @@index([userId, isArchived])
+  @@map("goals")
+}
+
+model TimerSettings {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  animationIcon String  @default("Zap")
+  soundType     String  @default("wind")
+  soundUrl      String?
+  favoriteMinutes Int     @default(25)
+  latestMinutes   Int     @default(25)
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("timer_settings")
 }

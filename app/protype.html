@@ -1,0 +1,380 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+.app-shell{display:grid;grid-template-columns:220px 1fr;grid-template-rows:auto 1fr;min-height:700px;background:var(--color-background-tertiary);border:0.5px solid var(--color-border-tertiary);border-radius:16px;overflow:hidden;font-family:var(--font-sans);}
+.topbar{grid-column:1/-1;background:var(--color-background-primary);border-bottom:0.5px solid var(--color-border-tertiary);padding:0 28px;height:56px;display:flex;align-items:center;justify-content:space-between;}
+.logo{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:500;color:var(--color-text-primary);}
+.logo-mark{width:28px;height:28px;border-radius:8px;background:#534AB7;display:flex;align-items:center;justify-content:center;}
+.logo-mark svg{width:14px;height:14px;}
+.topbar-right{display:flex;align-items:center;gap:20px;}
+.level-info{display:flex;align-items:center;gap:10px;}
+.level-badge{background:#EEEDFE;color:#3C3489;font-size:11px;font-weight:500;padding:4px 12px;border-radius:20px;}
+.xp-wrap{display:flex;flex-direction:column;gap:3px;align-items:flex-end;}
+.xp-label{font-size:10px;color:var(--color-text-tertiary);}
+.xp-track{width:96px;height:5px;background:var(--color-background-secondary);border-radius:3px;}
+.xp-fill{width:62%;height:100%;background:#7F77DD;border-radius:3px;}
+.streak{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-secondary);}
+.streak-dot{width:8px;height:8px;border-radius:50%;background:#D85A30;}
+
+.sidebar{background:var(--color-background-primary);border-right:0.5px solid var(--color-border-tertiary);padding:24px 16px;display:flex;flex-direction:column;gap:4px;}
+.sidebar-section{font-size:10px;font-weight:500;color:var(--color-text-tertiary);letter-spacing:.07em;padding:0 12px;margin:16px 0 6px;}
+.sidebar-section:first-child{margin-top:0;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--border-radius-md);cursor:pointer;font-size:13px;color:var(--color-text-secondary);transition:background .12s;}
+.nav-item:hover{background:var(--color-background-secondary);}
+.nav-item.active{background:#EEEDFE;color:#3C3489;font-weight:500;}
+.nav-icon{width:16px;height:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.nav-badge{margin-left:auto;font-size:10px;background:var(--color-background-secondary);color:var(--color-text-tertiary);padding:2px 7px;border-radius:10px;}
+.nav-badge.active{background:#AFA9EC;color:#26215C;}
+.sidebar-bottom{margin-top:auto;padding-top:16px;border-top:0.5px solid var(--color-border-tertiary);}
+.user-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--border-radius-md);}
+.avatar{width:32px;height:32px;border-radius:50%;background:#EEEDFE;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:#3C3489;flex-shrink:0;}
+
+.main{padding:32px 36px;display:none;flex-direction:column;gap:24px;}
+.main.active{display:flex;}
+.page-header{display:flex;align-items:flex-start;justify-content:space-between;}
+.page-title{font-size:22px;font-weight:500;color:var(--color-text-primary);}
+.page-sub{font-size:13px;color:var(--color-text-secondary);margin-top:4px;}
+.action-btn{background:#534AB7;color:#fff;border:none;padding:9px 20px;border-radius:var(--border-radius-md);font-size:13px;font-weight:500;cursor:pointer;flex-shrink:0;}
+
+.focus-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:16px;padding:24px;}
+.card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+.card-title{font-size:11px;font-weight:500;color:var(--color-text-secondary);letter-spacing:.06em;text-transform:uppercase;}
+.card-action{font-size:11px;color:#7F77DD;cursor:pointer;}
+
+.clock-area{display:flex;flex-direction:column;align-items:center;gap:20px;}
+.mode-row{display:flex;gap:8px;}
+.mpill{font-size:12px;padding:5px 14px;border-radius:20px;cursor:pointer;border:0.5px solid var(--color-border-secondary);color:var(--color-text-secondary);background:transparent;}
+.mpill.on{background:#534AB7;color:#fff;border-color:#534AB7;}
+.clock-svg-wrap{position:relative;width:200px;height:200px;}
+.clock-label{text-anchor:middle;dominant-baseline:middle;}
+.ctrl-row{display:flex;align-items:center;gap:12px;}
+.play-btn{width:44px;height:44px;border-radius:50%;background:#534AB7;border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.play-btn svg{width:16px;height:16px;}
+.skip-btn{width:34px;height:34px;border-radius:50%;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.skip-btn svg{width:12px;height:12px;}
+.session-dots{display:flex;gap:6px;}
+.sdot{width:8px;height:8px;border-radius:50%;background:var(--color-border-secondary);}
+.sdot.done{background:#7F77DD;}
+.sdot.current{background:#534AB7;width:20px;border-radius:4px;}
+.anim-label{font-size:11px;color:var(--color-text-tertiary);display:flex;align-items:center;gap:6px;}
+.anim-dot{width:6px;height:6px;border-radius:50%;background:#7F77DD;}
+
+.todo-list{display:flex;flex-direction:column;gap:6px;}
+.todo-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--border-radius-md);background:var(--color-background-secondary);}
+.tcheck{width:16px;height:16px;border-radius:50%;border:1.5px solid #AFA9EC;flex-shrink:0;}
+.tcheck.done{background:#7F77DD;border-color:#7F77DD;display:flex;align-items:center;justify-content:center;}
+.tcheck.done::after{content:'';width:5px;height:3px;border-left:1.5px solid #fff;border-bottom:1.5px solid #fff;transform:rotate(-45deg) translateY(-1px);display:block;}
+.ttext{flex:1;font-size:13px;color:var(--color-text-primary);}
+.ttext.done{text-decoration:line-through;color:var(--color-text-tertiary);}
+.ttag{font-size:10px;padding:2px 8px;border-radius:6px;background:#EEEDFE;color:#3C3489;}
+.ttag.green{background:#EAF3DE;color:#27500A;}
+.ttag.coral{background:#FAECE7;color:#712B13;}
+.add-row{display:flex;gap:8px;margin-top:12px;}
+.add-row input{flex:1;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:8px 12px;font-size:13px;color:var(--color-text-primary);}
+.add-go{background:#534AB7;color:#fff;border:none;border-radius:var(--border-radius-md);padding:8px 14px;font-size:13px;cursor:pointer;}
+
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+.stat-box{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:16px 18px;}
+.stat-num{font-size:26px;font-weight:500;color:var(--color-text-primary);}
+.stat-lbl{font-size:11px;color:var(--color-text-secondary);margin-top:4px;}
+.stat-delta{font-size:10px;color:var(--color-text-success);margin-top:2px;}
+
+.full-card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:16px;padding:24px;}
+.filter-row{display:flex;gap:6px;margin-bottom:18px;}
+.fpill{font-size:12px;padding:5px 14px;border-radius:20px;cursor:pointer;border:0.5px solid var(--color-border-secondary);color:var(--color-text-secondary);}
+.fpill.on{background:#EEEDFE;color:#3C3489;border-color:#AFA9EC;}
+
+.goals-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.goal-card{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:18px;}
+.goal-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;}
+.goal-badge{font-size:10px;padding:3px 8px;border-radius:6px;}
+.goal-badge.week{background:#EEEDFE;color:#3C3489;}
+.goal-badge.month{background:#E1F5EE;color:#085041;}
+.goal-name{font-size:14px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px;}
+.goal-sub{font-size:11px;color:var(--color-text-secondary);margin-bottom:14px;}
+.gbar{height:6px;background:var(--color-border-tertiary);border-radius:3px;margin-bottom:6px;}
+.gfill{height:100%;border-radius:3px;}
+.goal-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--color-text-tertiary);}
+
+.anim-section{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+.anim-tile{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:16px 12px;display:flex;flex-direction:column;align-items:center;gap:10px;cursor:pointer;}
+.anim-tile.equipped{background:#EEEDFE;border:1.5px solid #AFA9EC;}
+.anim-ring{width:56px;height:56px;border-radius:50%;border:2px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:center;}
+.anim-ring.unlocked{border-color:#7F77DD;background:#fff;}
+.anim-ring.equipped-ring{border-color:#534AB7;background:#EEEDFE;}
+.anim-ring.locked{opacity:.4;}
+.anim-name-t{font-size:12px;font-weight:500;color:var(--color-text-primary);}
+.anim-status{font-size:10px;color:var(--color-text-tertiary);}
+.anim-status.eq{color:#534AB7;}
+.anim-status.ul{color:#1D9E75;}
+.lock-ring{width:14px;height:14px;}
+</style>
+
+<div class="app-shell">
+
+  <div class="topbar">
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="#fff" stroke-width="1.5"/><circle cx="7" cy="7" r="2" fill="#fff"/></svg>
+      </div>
+      FocusFlow
+    </div>
+    <div class="topbar-right">
+      <div class="streak"><div class="streak-dot"></div>7 day streak</div>
+      <div class="level-info">
+        <div class="xp-wrap">
+          <div class="xp-label">620 / 1000 xp · Level 4</div>
+          <div class="xp-track"><div class="xp-fill"></div></div>
+        </div>
+        <div class="level-badge">Focused</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="sidebar-section">Main</div>
+    <div class="nav-item active" onclick="showPage('focus',this)">
+      <div class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2.5" fill="currentColor"/></svg></div>
+      Focus
+      <div class="nav-badge active">Active</div>
+    </div>
+    <div class="nav-item" onclick="showPage('todos',this)">
+      <div class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="4" width="10" height="1.5" rx=".75" fill="currentColor"/><rect x="3" y="7.25" width="7" height="1.5" rx=".75" fill="currentColor"/><rect x="3" y="10.5" width="8.5" height="1.5" rx=".75" fill="currentColor"/></svg></div>
+      All todos
+      <div class="nav-badge">47</div>
+    </div>
+    <div class="nav-item" onclick="showPage('goals',this)">
+      <div class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 12 L3 6 L7 9 L10 4 L13 7" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      Goals
+      <div class="nav-badge">4</div>
+    </div>
+    <div class="sidebar-section">Customize</div>
+    <div class="nav-item" onclick="showPage('animations',this)">
+      <div class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><polygon points="8,2 10,6 14,6.5 11,9.5 11.8,13.5 8,11.5 4.2,13.5 5,9.5 2,6.5 6,6" stroke="currentColor" stroke-width="1.2" fill="none"/></svg></div>
+      Animations
+    </div>
+    <div class="sidebar-bottom">
+      <div class="user-row">
+        <div class="avatar">PI</div>
+        <div>
+          <div style="font-size:13px;font-weight:500;color:var(--color-text-primary);">Piyush</div>
+          <div style="font-size:11px;color:var(--color-text-tertiary);">Level 4 · Focused</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main active" id="page-focus">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Focus session</div>
+        <div class="page-sub">Tuesday, 5 May · Session 2 of 4 today</div>
+      </div>
+    </div>
+    <div class="focus-grid">
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Pomodoro timer</div>
+          <div class="card-action">Settings</div>
+        </div>
+        <div class="clock-area">
+          <div class="mode-row">
+            <div class="mpill on">Focus 25m</div>
+            <div class="mpill">Short break 5m</div>
+            <div class="mpill">Long break 15m</div>
+          </div>
+          <div class="clock-svg-wrap">
+            <svg width="200" height="200" viewBox="0 0 200 200">
+              <circle cx="100" cy="100" r="85" fill="none" stroke="#EEEDFE" stroke-width="10"/>
+              <circle cx="100" cy="100" r="85" fill="none" stroke="#7F77DD" stroke-width="10"
+                stroke-dasharray="534" stroke-dashoffset="134"
+                stroke-linecap="round" transform="rotate(-90 100 100)"/>
+              <text x="100" y="90" class="clock-label" font-size="38" font-weight="500" fill="var(--color-text-primary)">18:42</text>
+              <text x="100" y="116" class="clock-label" font-size="12" fill="var(--color-text-secondary)">75% complete</text>
+              <text x="100" y="134" class="clock-label" font-size="11" fill="var(--color-text-tertiary)">Pulse Ring active</text>
+            </svg>
+          </div>
+          <div class="ctrl-row">
+            <div class="skip-btn">
+              <svg viewBox="0 0 12 12" fill="none"><path d="M2 2 L6 6 L2 10" stroke="var(--color-text-secondary)" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </div>
+            <div class="play-btn">
+              <svg viewBox="0 0 16 16" fill="none"><rect x="4" y="3" width="3" height="10" rx="1" fill="#fff"/><rect x="9" y="3" width="3" height="10" rx="1" fill="#fff"/></svg>
+            </div>
+            <div class="skip-btn">
+              <svg viewBox="0 0 12 12" fill="none"><path d="M3 2 L9 6 L3 10Z" fill="var(--color-text-secondary)"/><rect x="8.5" y="2" width="1.5" height="8" rx=".5" fill="var(--color-text-secondary)"/></svg>
+            </div>
+          </div>
+          <div class="session-dots">
+            <div class="sdot done"></div>
+            <div class="sdot current"></div>
+            <div class="sdot"></div>
+            <div class="sdot"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Today's tasks</div>
+          <div class="card-action">View all</div>
+        </div>
+        <div class="todo-list">
+          <div class="todo-row"><div class="tcheck done"></div><span class="ttext done">Review PHP notes</span><div class="ttag">Study</div></div>
+          <div class="todo-row"><div class="tcheck done"></div><span class="ttext done">CSS flexbox practice</span><div class="ttag green">Study</div></div>
+          <div class="todo-row"><div class="tcheck"></div><span class="ttext">Prepare GD topics list</span><div class="ttag coral">Interview</div></div>
+          <div class="todo-row"><div class="tcheck"></div><span class="ttext">Mock interview practice</span><div class="ttag coral">Interview</div></div>
+          <div class="todo-row"><div class="tcheck"></div><span class="ttext">Research Wipro B2B role</span><div class="ttag">Job</div></div>
+          <div class="todo-row"><div class="tcheck"></div><span class="ttext">Push portfolio to GitHub</span><div class="ttag green">Dev</div></div>
+        </div>
+        <div class="add-row">
+          <input placeholder="Add a task for today..." />
+          <button class="add-go">Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main" id="page-todos">
+    <div class="page-header">
+      <div>
+        <div class="page-title">All todos</div>
+        <div class="page-sub">Everything you've ever tracked, all time</div>
+      </div>
+      <button class="action-btn">+ New task</button>
+    </div>
+    <div class="stats-row">
+      <div class="stat-box"><div class="stat-num">47</div><div class="stat-lbl">Total completed</div><div class="stat-delta">+3 today</div></div>
+      <div class="stat-box"><div class="stat-num">6</div><div class="stat-lbl">Remaining today</div></div>
+      <div class="stat-box"><div class="stat-num">12</div><div class="stat-lbl">Done this week</div><div class="stat-delta">+4 vs last week</div></div>
+      <div class="stat-box"><div class="stat-num">89%</div><div class="stat-lbl">Completion rate</div></div>
+    </div>
+    <div class="full-card">
+      <div class="filter-row">
+        <div class="fpill on">All</div>
+        <div class="fpill">Today</div>
+        <div class="fpill">This week</div>
+        <div class="fpill">Completed</div>
+        <div class="fpill">Study</div>
+        <div class="fpill">Interview</div>
+        <div class="fpill">Job</div>
+      </div>
+      <div class="todo-list">
+        <div class="todo-row"><div class="tcheck done"></div><span class="ttext done">Review PHP notes</span><span style="font-size:11px;color:var(--color-text-tertiary);margin-left:auto;margin-right:8px;">Today</span><div class="ttag green">Study</div></div>
+        <div class="todo-row"><div class="tcheck done"></div><span class="ttext done">CSS flexbox practice</span><span style="font-size:11px;color:var(--color-text-tertiary);margin-left:auto;margin-right:8px;">Today</span><div class="ttag green">Study</div></div>
+        <div class="todo-row"><div class="tcheck"></div><span class="ttext">Prepare GD topics list</span><span style="font-size:11px;color:var(--color-text-tertiary);margin-left:auto;margin-right:8px;">Today</span><div class="ttag coral">Interview</div></div>
+        <div class="todo-row"><div class="tcheck"></div><span class="ttext">Mock interview practice</span><span style="font-size:11px;color:var(--color-text-tertiary);margin-left:auto;margin-right:8px;">Today</span><div class="ttag coral">Interview</div></div>
+        <div class="todo-row"><div class="tcheck"></div><span class="ttext">Research Wipro B2B role</span><span style="font-size:11px;color:var(--color-text-tertiary);margin-left:auto;margin-right:8px;">Today</span><div class="ttag">Job</div></div>
+        <div class="todo-row"><div class="tcheck done"></div><span class="ttext done">Set up weekly goals</span><span style="font-size:11px;color:var(--color-text-tertiary);margin-left:auto;margin-right:8px;">Yesterday</span><div class="ttag">Planning</div></div>
+        <div class="todo-row"><div class="tcheck done"></div><span class="ttext done">Practice PHP arrays</span><span style="font-size:11px;color:var(--color-text-tertiary);margin-left:auto;margin-right:8px;">Yesterday</span><div class="ttag green">Study</div></div>
+        <div class="todo-row"><div class="tcheck done"></div><span class="ttext done">JavaScript DOM basics</span><span style="font-size:11px;color:var(--color-text-tertiary);margin-left:auto;margin-right:8px;">Mon</span><div class="ttag green">Study</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main" id="page-goals">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Goals</div>
+        <div class="page-sub">Track your weekly and monthly targets</div>
+      </div>
+      <button class="action-btn">+ Add goal</button>
+    </div>
+    <div class="filter-row" style="display:flex;gap:8px;">
+      <div class="fpill on">This week</div>
+      <div class="fpill">This month</div>
+      <div class="fpill">All time</div>
+    </div>
+    <div class="goals-grid">
+      <div class="goal-card">
+        <div class="goal-top"><div><div class="goal-name">Complete 20 pomodoros</div><div class="goal-sub">Weekly focus goal</div></div><div class="goal-badge week">Week</div></div>
+        <div class="gbar"><div class="gfill" style="width:65%;background:#7F77DD;"></div></div>
+        <div class="goal-meta"><span>13 of 20 sessions</span><span style="color:#534AB7;font-weight:500;">65%</span></div>
+      </div>
+      <div class="goal-card">
+        <div class="goal-top"><div><div class="goal-name">Finish PHP module</div><div class="goal-sub">10 topics to complete</div></div><div class="goal-badge week">Week</div></div>
+        <div class="gbar"><div class="gfill" style="width:40%;background:#1D9E75;"></div></div>
+        <div class="goal-meta"><span>4 of 10 topics</span><span style="color:#1D9E75;font-weight:500;">40%</span></div>
+      </div>
+      <div class="goal-card">
+        <div class="goal-top"><div><div class="goal-name">Land 3 interviews</div><div class="goal-sub">Monthly job search goal</div></div><div class="goal-badge month">Month</div></div>
+        <div class="gbar"><div class="gfill" style="width:33%;background:#D85A30;"></div></div>
+        <div class="goal-meta"><span>1 of 3 scheduled</span><span style="color:#D85A30;font-weight:500;">33%</span></div>
+      </div>
+      <div class="goal-card">
+        <div class="goal-top"><div><div class="goal-name">Study 80 hours</div><div class="goal-sub">Monthly deep work goal</div></div><div class="goal-badge month">Month</div></div>
+        <div class="gbar"><div class="gfill" style="width:50%;background:#BA7517;"></div></div>
+        <div class="goal-meta"><span>40 of 80 hours</span><span style="color:#BA7517;font-weight:500;">50%</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main" id="page-animations">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Animations</div>
+        <div class="page-sub">Unlock new clock animations as you level up — currently level 4</div>
+      </div>
+    </div>
+    <div class="full-card">
+      <div class="card-head"><div class="card-title">Unlocked</div></div>
+      <div class="anim-section" style="margin-bottom:28px;">
+        <div class="anim-tile equipped">
+          <div class="anim-ring equipped-ring">
+            <svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke="#534AB7" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="4" stroke="#7F77DD" stroke-width="1.5" fill="none"/></svg>
+          </div>
+          <div class="anim-name-t">Pulse ring</div>
+          <div class="anim-status eq">Equipped</div>
+        </div>
+        <div class="anim-tile">
+          <div class="anim-ring unlocked">
+            <svg width="22" height="22" viewBox="0 0 22 22"><path d="M11 2 L13 8 L19 8 L14.5 12 L16.5 18 L11 14.5 L5.5 18 L7.5 12 L3 8 L9 8Z" stroke="#7F77DD" stroke-width="1.5" fill="none"/></svg>
+          </div>
+          <div class="anim-name-t">Sparkle</div>
+          <div class="anim-status ul">Unlocked</div>
+        </div>
+        <div class="anim-tile">
+          <div class="anim-ring unlocked">
+            <svg width="22" height="22" viewBox="0 0 22 22"><path d="M3 11 Q7 7 11 11 Q15 15 19 11" stroke="#7F77DD" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+          </div>
+          <div class="anim-name-t">Wave</div>
+          <div class="anim-status ul">Unlocked</div>
+        </div>
+      </div>
+      <div class="card-head"><div class="card-title">Locked — keep leveling up</div></div>
+      <div class="anim-section">
+        <div class="anim-tile">
+          <div class="anim-ring locked"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="6" width="10" height="7" rx="1.5" stroke="var(--color-text-tertiary)" stroke-width="1.2"/><path d="M4.5 6V4.5a2.5 2.5 0 015 0V6" stroke="var(--color-text-tertiary)" stroke-width="1.2"/></svg></div>
+          <div class="anim-name-t">Fire trail</div><div class="anim-status">Level 5</div>
+        </div>
+        <div class="anim-tile">
+          <div class="anim-ring locked"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="6" width="10" height="7" rx="1.5" stroke="var(--color-text-tertiary)" stroke-width="1.2"/><path d="M4.5 6V4.5a2.5 2.5 0 015 0V6" stroke="var(--color-text-tertiary)" stroke-width="1.2"/></svg></div>
+          <div class="anim-name-t">Aurora</div><div class="anim-status">Level 7</div>
+        </div>
+        <div class="anim-tile">
+          <div class="anim-ring locked"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="6" width="10" height="7" rx="1.5" stroke="var(--color-text-tertiary)" stroke-width="1.2"/><path d="M4.5 6V4.5a2.5 2.5 0 015 0V6" stroke="var(--color-text-tertiary)" stroke-width="1.2"/></svg></div>
+          <div class="anim-name-t">Galaxy</div><div class="anim-status">Level 10</div>
+        </div>
+        <div class="anim-tile">
+          <div class="anim-ring locked"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="6" width="10" height="7" rx="1.5" stroke="var(--color-text-tertiary)" stroke-width="1.2"/><path d="M4.5 6V4.5a2.5 2.5 0 015 0V6" stroke="var(--color-text-tertiary)" stroke-width="1.2"/></svg></div>
+          <div class="anim-name-t">Storm</div><div class="anim-status">Level 15</div>
+        </div>
+        <div class="anim-tile">
+          <div class="anim-ring locked"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="6" width="10" height="7" rx="1.5" stroke="var(--color-text-tertiary)" stroke-width="1.2"/><path d="M4.5 6V4.5a2.5 2.5 0 015 0V6" stroke="var(--color-text-tertiary)" stroke-width="1.2"/></svg></div>
+          <div class="anim-name-t">Void</div><div class="anim-status">Level 20</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function showPage(name, el) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.main').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('page-' + name).classList.add('active');
+}
+</script>

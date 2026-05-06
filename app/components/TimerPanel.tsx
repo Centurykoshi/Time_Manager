@@ -2,11 +2,37 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Play, Pause, Square, RotateCcw } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Play, Pause, RotateCcw, Heart, History } from "lucide-react";
 import { Button } from "./ui/button";
+import { TimerCustomizer } from "./TimerCustomizer";
 
 type TimerStatus = "idle" | "running" | "paused" | "ended";
+
+// YouTube Player type declaration
+declare global {
+  interface Window {
+    YT: {
+      Player: new (elementId: string, options: Record<string, unknown>) => YTPlayer;
+      PlayerState: {
+        UNSTARTED: number;
+        ENDED: number;
+        PLAYING: number;
+        PAUSED: number;
+        BUFFERING: number;
+        CUED: number;
+      };
+      loaded: number;
+    };
+    onYouTubeIframeAPIReady: () => void;
+  }
+}
+
+interface YTPlayer {
+  playVideo(): void;
+  pauseVideo(): void;
+  stopVideo(): void;
+  getPlayerState(): number;
+}
 
 const presets = [15, 20, 25, 45, 60];
 
@@ -26,9 +52,62 @@ export function TimerPanel() {
   const [remainingSec, setRemainingSec] = useState<number>(25 * 60);
   const [activeDurationSec, setActiveDurationSec] = useState<number>(25 * 60);
   const [status, setStatus] = useState<TimerStatus>("idle");
+  const [isDragging, setIsDragging] = useState(false);
+  const [animationIcon, setAnimationIcon] = useState("Zap");
+  const [soundType, setSoundType] = useState("wind");
+  const [soundUrl, setSoundUrl] = useState("https://www.youtube.com/watch?v=vKov28ce8vo");
+  const [favoriteMinutes, setFavoriteMinutes] = useState<number>(25);
+  const [latestMinutes, setLatestMinutes] = useState<number>(25);
+  const [animationParticles, setAnimationParticles] = useState<Array<{ id: number; x: number; y: number }>>([]);
+  const [showFavoriteModal, setShowFavoriteModal] = useState(false);
+  const [favoriteInputValue, setFavoriteInputValue] = useState<string>(String(favoriteMinutes));
+  const particleCountRef = useRef(0);
 
   const tickRef = useRef<number | null>(null);
   const savedRunRef = useRef(false);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const dragStartRef = useRef({ y: 0, time: 0 });
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const playerRef = useRef<YTPlayer | null>(null);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const response = await fetch("/api/timer-settings");
+        if (response.ok) {
+          const data = (await response.json()) as {
+            animationIcon: string;
+            soundType: string;
+            soundUrl?: string;
+            favoriteMinutes?: number;
+            latestMinutes?: number;
+          };
+          setAnimationIcon(data.animationIcon);
+          setSoundType(data.soundType);
+          if (data.soundUrl) setSoundUrl(data.soundUrl);
+          if (data.favoriteMinutes) {
+            setFavoriteMinutes(data.favoriteMinutes);
+            setFavoriteInputValue(String(data.favoriteMinutes));
+          }
+          if (data.latestMinutes) setLatestMinutes(data.latestMinutes);
+        }
+      } catch (error) {
+        console.error("Failed to fetch timer settings:", error);
+      }
+    };
+
+    void fetchSettings();
+
+    // Load YouTube IFrame API
+    if (!window.YT) {
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
+      const firstScriptTag = document.getElementsByTagName("script")[0];
+      if (firstScriptTag && firstScriptTag.parentNode) {
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+      }
+    }
+  }, []);
 
   const durationSec = clamp(Math.round(durationMin * 60), 60, 60 * 180);
   const progress = clamp(remainingSec / Math.max(activeDurationSec, 1), 0, 1);
@@ -70,16 +149,42 @@ export function TimerPanel() {
   };
 
   const applyDuration = (minutes: number) => {
+    // Only apply duration changes when timer is idle
+    if (status !== "idle") return;
+    
     const nextMinutes = clamp(minutes, 1, 180);
     const nextSeconds = clamp(Math.round(nextMinutes * 60), 60, 60 * 180);
 
     setDurationMin(nextMinutes);
     savedRunRef.current = false;
-    if (status !== "running") {
-      stopTick();
-      setStatus("idle");
-      setRemainingSec(nextSeconds);
-      setActiveDurationSec(nextSeconds);
+    setStatus("idle");
+    setRemainingSec(nextSeconds);
+    setActiveDurationSec(nextSeconds);
+  };
+
+  const updateLatestMinutes = async (minutes: number) => {
+    setLatestMinutes(minutes);
+    try {
+      await fetch("/api/timer-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ latestMinutes: minutes }),
+      });
+    } catch (error) {
+      console.error("Failed to save latest minutes:", error);
+    }
+  };
+
+  const updateFavoriteMinutes = async (minutes: number) => {
+    setFavoriteMinutes(minutes);
+    try {
+      await fetch("/api/timer-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ favoriteMinutes: minutes }),
+      });
+    } catch (error) {
+      console.error("Failed to save favorite minutes:", error);
     }
   };
 
@@ -130,6 +235,11 @@ export function TimerPanel() {
       setActiveDurationSec(durationSec);
       setRemainingSec(durationSec);
       savedRunRef.current = false;
+      void updateLatestMinutes(durationMin);
+      playTimerAnimation(); // Play animation and sound when starting fresh
+    } else {
+      // resuming from pause
+      resumeAudio();
     }
 
     setStatus("running");
@@ -143,6 +253,7 @@ export function TimerPanel() {
             void saveSession(activeDurationSec);
           }
           setStatus("ended");
+          stopAudio();
           void chime();
           return 0;
         }
@@ -154,15 +265,25 @@ export function TimerPanel() {
   const pause = () => {
     if (status !== "running") return;
     setStatus("paused");
+    pauseAudio();
     stopTick();
   };
 
-  const restart = () => {
+  const restart = async () => {
+    const elapsedSeconds = activeDurationSec - remainingSec;
+    if (!savedRunRef.current && elapsedSeconds > 0) {
+      savedRunRef.current = true;
+      try {
+        await saveSession(elapsedSeconds);
+      } catch {
+        savedRunRef.current = false;
+      }
+    }
     stopTick();
+    stopAudio();
     setActiveDurationSec(durationSec);
     setRemainingSec(durationSec);
     setStatus("idle");
-    savedRunRef.current = false;
   };
 
   const stop = async () => {
@@ -176,6 +297,7 @@ export function TimerPanel() {
       }
     }
     stopTick();
+    stopAudio();
     setActiveDurationSec(durationSec);
     setRemainingSec(durationSec);
     setStatus("idle");
@@ -186,7 +308,7 @@ export function TimerPanel() {
     return () => stopTick();
   }, []);
 
-  const R = 60;
+  const R = 85;
   const C = 2 * Math.PI * R;
   const dashOffset = C * (1 - progress);
   const statusLabel =
@@ -198,101 +320,400 @@ export function TimerPanel() {
           ? "Complete"
           : "Ready";
 
-    const primaryButtonLabel = status === "paused" ? "Resume" : status === "running" ? "Running" : "Start";
-    const showPause = status === "running";
-    const resetLabel = status === "ended" ? "Restart" : "Reset";
+  const primaryButtonLabel = status === "paused" ? "Resume" : status === "running" ? "Pause" : "Start";
+  const resetLabel = status === "ended" ? "Restart" : "Reset";
+
+  const playAdjustmentSound = async (frequency: number = 800) => {
+    try {
+      const AudioContextCtor =
+        window.AudioContext ||
+        (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextCtor) return;
+
+      const ctx = audioContextRef.current || new AudioContextCtor();
+      audioContextRef.current = ctx;
+      
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(frequency, now);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.1);
+    } catch {
+      // Silent fail if audio context unavailable
+    }
+  };
+
+  const playTimerAnimation = () => {
+    // Create particle burst animation
+    stopAudio();
+    const particles = Array.from({ length: 8 }).map((_, i) => ({
+      id: particleCountRef.current++,
+      x: Math.cos((i / 8) * Math.PI * 2) * 100,
+      y: Math.sin((i / 8) * Math.PI * 2) * 100,
+    }));
+    setAnimationParticles(particles);
+
+    // Auto-remove particles after animation
+    setTimeout(() => {
+      setAnimationParticles([]);
+    }, 800);
+
+    // Play YouTube sound via YouTube API
+    if (soundUrl) {
+      const youtubeId = soundUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^\&\?]*)/)?.[1];
+      if (youtubeId) {
+        const iframeContainer = document.getElementById("timer-sound-player");
+        if (iframeContainer) {
+          iframeContainer.innerHTML = `<div id="yt-player"></div>`;
+          
+          // Wait for YouTube API to be ready
+          const checkAPI = setInterval(() => {
+            if (window.YT && window.YT.Player) {
+              clearInterval(checkAPI);
+              try {
+                playerRef.current = new window.YT.Player("yt-player", {
+                  height: "0",
+                  width: "0",
+                  videoId: youtubeId,
+                  events: {
+                    onReady: (event: { target: YTPlayer }) => {
+                      event.target.playVideo();
+                    },
+                  },
+                });
+              } catch {
+                // Silent fail if player creation fails
+              }
+            }
+          }, 100);
+
+          // Timeout after 2 seconds
+          setTimeout(() => clearInterval(checkAPI), 2000);
+        }
+      }
+    }
+  };
+
+  const pauseAudio = () => {
+    if (playerRef.current) {
+      try {
+        playerRef.current.pauseVideo();
+      } catch {
+        // Silent fail
+      }
+    }
+  };
+
+  const resumeAudio = () => {
+    if (playerRef.current) {
+      try {
+        playerRef.current.playVideo();
+      } catch {
+        // Silent fail
+      }
+    }
+  };
+
+  const stopAudio = () => {
+    if (playerRef.current) {
+      try {
+        playerRef.current.stopVideo();
+      } catch {
+        // Silent fail
+      }
+    }
+    playerRef.current = null;
+  };
+
+  const handleContextMenu = (e: React.MouseEvent<SVGSVGElement>) => {
+    e.preventDefault();
+    if (status !== "idle") return;
+    
+    setIsDragging(true);
+    dragStartRef.current = { y: e.clientY, time: remainingSec };
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleWindowMove = (e: MouseEvent) => {
+      if (!isDragging || status !== "idle") return;
+
+      const deltaY = e.clientY - dragStartRef.current.y;
+      // Every 30px = 1 minute adjustment (via right-click + mouse movement)
+      const minuteAdjustment = Math.round((-deltaY / 30) * 1);
+      
+      if (minuteAdjustment !== 0) {
+        const newMinutes = clamp(durationMin + minuteAdjustment, 1, 180);
+        const newSeconds = newMinutes * 60;
+        
+        setDurationMin(newMinutes);
+        setRemainingSec(newSeconds);
+        setActiveDurationSec(newSeconds);
+        
+        // Play sound for adjustment (higher frequency for increase, lower for decrease)
+        const freq = minuteAdjustment > 0 ? 880 : 700;
+        void playAdjustmentSound(freq);
+        
+        dragStartRef.current = { y: e.clientY, time: newSeconds };
+      }
+    };
+
+    const handleWindowUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener("mousemove", handleWindowMove);
+    window.addEventListener("mouseup", handleWindowUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleWindowMove);
+      window.removeEventListener("mouseup", handleWindowUp);
+    };
+  }, [isDragging, status, durationMin]);
+
+  const handleWheel = (e: React.WheelEvent<SVGSVGElement>) => {
+    if (status !== "idle") return;
+    
+    e.preventDefault();
+    const direction = e.deltaY > 0 ? -1 : 1; // Scroll down = decrease, scroll up = increase
+    const newMinutes = clamp(durationMin + direction, 1, 180);
+    const newSeconds = newMinutes * 60;
+
+    setDurationMin(newMinutes);
+    setRemainingSec(newSeconds);
+    setActiveDurationSec(newSeconds);
+
+    // Play sound for adjustment
+    const freq = direction > 0 ? 880 : 700;
+    void playAdjustmentSound(freq);
+  };
+
+  const toggleTimer = () => {
+    if (status === "running") {
+      pause();
+      return;
+    }
+
+    if (status === "paused") {
+      start();
+      return;
+    }
+
+    start();
+  };
+
+  const setFavoriteFromPrompt = async () => {
+    if (status !== "idle") return;
+    setFavoriteInputValue(String(favoriteMinutes));
+    setShowFavoriteModal(true);
+  };
+
+  const handleFavoriteSave = async () => {
+    const parsed = Number.parseInt(favoriteInputValue, 10);
+    if (Number.isNaN(parsed)) return;
+
+    const next = clamp(parsed, 1, 180);
+    applyDuration(next);
+    await updateFavoriteMinutes(next);
+    setShowFavoriteModal(false);
+  };
 
   return (
-      <Card className="relative h-full min-h-0 overflow-hidden border border-border bg-card text-foreground shadow-sm">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/40 bg-card/50 p-6"
+    >
+      <TimerCustomizer onSettingsChange={(newSettings) => {
+        setAnimationIcon(newSettings.animationIcon);
+        setSoundType(newSettings.soundType);
+        if (newSettings.soundUrl) setSoundUrl(newSettings.soundUrl);
+      }} />
+      <div id="timer-sound-player" style={{ display: "none" }}></div>
+      
+      <div className="mb-4 space-y-2">
+        <div className="text-xs uppercase tracking-wider text-muted-foreground">Pomodoro timer</div>
+        <h3 className="text-lg font-semibold">Focus session</h3>
+      </div>
 
-        <CardHeader className="relative items-center gap-1 px-6 pt-6 text-center">
-          <CardTitle className="text-2xl font-semibold tracking-tight text-foreground">Focus Timer</CardTitle>
-          <CardDescription className="text-[11px] tracking-[0.22em] text-secondary-foreground">
-            Session control
-          </CardDescription>
-        </CardHeader>
+      <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-5 text-center">
+        <motion.div
+          initial={{ scale: 0.95 }}
+          animate={{ scale: 1 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+          className="flex flex-wrap items-center justify-center gap-3 mb-4"
+        >
+          {[
+            { dur: latestMinutes, id: "latest", icon: History, title: `Latest ${latestMinutes}m` },
+            { dur: 25, id: "focus", title: "25m Focus" },
+            { dur: 5, id: "short", title: "5m Short" },
+            { dur: 15, id: "long", title: "15m Long" },
+            { dur: favoriteMinutes, id: "favorite", icon: Heart, title: `${favoriteMinutes}m Favorite` },
+          ].map((item, i) => {
+            const selected = durationMin === item.dur;
+            const Icon = item.icon;
+            const handleClick = async () => {
+              if (item.id === "favorite") {
+                await setFavoriteFromPrompt();
+                return;
+              }
 
-        <CardContent className="relative flex h-[calc(100%-88px)] min-h-0 flex-col items-center justify-center gap-5 px-6 pb-6 pt-0 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.45 }}
-            className="relative flex flex-col items-center"
+              applyDuration(item.dur);
+            };
+            return (
+              <motion.button
+                key={item.id}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.15 + i * 0.05 }}
+                onClick={handleClick}
+                title={item.title}
+                className={
+                  (Icon
+                    ? "inline-flex items-center justify-center h-8 w-8 rounded-full border transition "
+                    : "inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition ") +
+                  (selected ? "bg-primary text-primary-foreground border-primary" : "border-border/60 text-muted-foreground hover:border-primary/60")
+                }
+              >
+                {Icon ? <Icon className="h-4 w-4" /> : item.title}
+              </motion.button>
+            );
+          })}
+        </motion.div>
+
+        <motion.svg
+          ref={svgRef}
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.3, delay: 0.2 }}
+          width="160"
+          height="160"
+          viewBox="0 0 200 200"
+          className={`mb-6 ${status === "idle" ? "cursor-grab active:cursor-grabbing" : ""}`}
+          onContextMenu={handleContextMenu}
+          onWheel={handleWheel}
+          onMouseLeave={handleMouseUp}
+          style={{ userSelect: "none" }}
+        >
+          <circle cx="100" cy="100" r="85" fill="none" stroke="currentColor" strokeWidth="10" className="stroke-secondary/40" />
+          <circle
+            cx="100"
+            cy="100"
+            r="85"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="10"
+            strokeDasharray={C}
+            strokeDashoffset={dashOffset}
+            strokeLinecap="round"
+            transform="rotate(-90 100 100)"
+            className={`stroke-primary transition-all ${isDragging ? "stroke-primary/80" : ""}`}
+            style={{ transition: isDragging ? "none" : "stroke-dashoffset 200ms linear" }}
+          />
+          <text x="100" y="95" textAnchor="middle" dominantBaseline="middle" className="text-3xl font-semibold fill-foreground pointer-events-none">
+            {fmt(remainingSec)}
+          </text>
+          <motion.text
+            x="100"
+            y="125"
+            textAnchor="middle"
+            dominantBaseline="middle"
+            className="text-xs fill-muted-foreground pointer-events-none"
+            animate={{ opacity: isDragging ? 0.5 : 1 }}
           >
-            <div className="absolute inset-0 -z-10 flex items-center justify-center">
-              <div className="h-44 w-44 rounded-full border border-border bg-secondary/20" />
-            </div>
+            {status === "idle" ? (isDragging ? "Adjust time" : "Right-click drag / Scroll") : statusLabel}
+          </motion.text>
+        </motion.svg>
 
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.3 }}
+          className="flex items-center gap-3 justify-center"
+        >
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            <Button onClick={toggleTimer} className="h-11 gap-2 px-6">
+              {status === "running" ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              {primaryButtonLabel}
+            </Button>
+          </motion.div>
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            <Button onClick={restart} variant="outline" size="icon">
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+          </motion.div>
+        </motion.div>
+      </div>
 
-
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary/70">
-                {statusLabel}
+      {/* Favorite Minutes Modal */}
+      {showFavoriteModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setShowFavoriteModal(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-card/90 border border-border/40 rounded-lg p-6 w-96 shadow-lg backdrop-blur-md"
+          >
+            <h2 className="text-lg font-semibold mb-4">Set Favorite Duration</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm text-muted-foreground mb-2 block">Minutes (1-180)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="180"
+                  value={favoriteInputValue}
+                  onChange={(e) => setFavoriteInputValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      void handleFavoriteSave();
+                    }
+                  }}
+                  autoFocus
+                  className="w-full h-9 rounded-lg border border-border/40 bg-secondary/20 px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                />
               </div>
-              <div className="mb-20 mt-2 font-mono text-[36px] font-semibold leading-none tracking-[0.01em] text-primary sm:text-[42px]">
-                {fmt(remainingSec)}
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowFavoriteModal(false)}
+                  className="px-4"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => void handleFavoriteSave()}
+                  className="px-4"
+                >
+                  Save
+                </Button>
               </div>
             </div>
           </motion.div>
-
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {presets.map((m) => {
-              const selected = durationMin === m;
-              return (
-                <Button
-                  key={m}
-                  onClick={() => applyDuration(m)}
-                  variant={selected ? "default" : "outline"}
-                  size="sm"
-                  className={
-                        "h-9 min-w-11 rounded-[0.4rem] px-3 text-[12px] font-bold shadow-none " +
-                    (selected
-                          ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
-                          : "border-border bg-secondary/35 text-secondary-foreground hover:border-primary/60 hover:bg-primary/10 hover:text-primary")
-                  }
-                >
-                  {m}
-                </Button>
-              );
-            })}
-          </div>
-
-          <div className="flex w-full items-center gap-3 pt-1">
-            <Button
-              onClick={start}
-              disabled={status === "running"}
-              className="h-12 flex-1 rounded-md bg-primary px-6 font-bold uppercase tracking-[0.18em] text-primary-foreground hover:bg-primary/90"
-            >
-              <Play className="h-4 w-4" />
-              {primaryButtonLabel}
-            </Button>
-
-            <Button
-              onClick={pause}
-              variant="outline"
-              disabled={!showPause}
-              aria-label="Pause timer"
-              className="h-12 w-12 rounded-md border-border bg-secondary/35 text-secondary-foreground hover:border-primary/60 hover:bg-primary/10 hover:text-primary"
-            >
-              <Pause className="h-4 w-4" />
-            </Button>
-
-            <Button
-              onClick={() => {
-                if (status === "ended") {
-                  restart();
-                  return;
-                }
-                void stop();
-              }}
-              variant="outline"
-              aria-label={resetLabel}
-              className="h-12 w-12 rounded-md border-border bg-secondary/35 text-secondary-foreground hover:border-primary/60 hover:bg-primary/10 hover:text-primary"
-            >
-              {status === "ended" ? <RotateCcw className="h-4 w-4" /> : <Square className="h-4 w-4" />}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        </motion.div>
+      )}
+    </motion.div>
   );
 }

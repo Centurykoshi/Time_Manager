@@ -24,6 +24,7 @@ export type DashboardSnapshot = {
     weekEnd: string;
   };
   streakDays: number;
+  streakBreakAt: string | null;
   dailySeries: Array<{
     day: string;
     label: string;
@@ -69,21 +70,38 @@ export function formatDayLabel(date: Date) {
   return new Intl.DateTimeFormat("en", { weekday: "short" }).format(date);
 }
 
-function countStreak(series: Array<{ day: Date; studiedMinutes: number; focusSessions: number }>, today: Date) {
-  const byDay = new Map(series.map((entry) => [entry.day.toISOString().slice(0, 10), entry]));
-  let streak = 0;
+function hasActivity(entry?: { studiedMinutes: number; focusSessions: number; todosCompleted?: number }) {
+  return Boolean(entry && (entry.studiedMinutes > 0 || entry.focusSessions > 0 || (entry.todosCompleted ?? 0) > 0));
+}
 
-  for (let offset = 0; offset < 365; offset += 1) {
-    const cursor = addUtcDays(today, -offset);
+function getStreakState(series: Array<{ day: Date; studiedMinutes: number; focusSessions: number; todosCompleted: number }>, today: Date) {
+  const byDay = new Map(series.map((entry) => [entry.day.toISOString().slice(0, 10), entry]));
+  const todayKey = today.toISOString().slice(0, 10);
+  const referenceDay = hasActivity(byDay.get(todayKey)) ? today : addUtcDays(today, -1);
+  let streak = 0;
+  let lastActiveDay: Date | null = null;
+
+  for (let offset = 0; offset < 3650; offset += 1) {
+    const cursor = addUtcDays(referenceDay, -offset);
     const key = cursor.toISOString().slice(0, 10);
     const entry = byDay.get(key);
-    if (!entry || (entry.studiedMinutes <= 0 && entry.focusSessions <= 0)) {
+    if (!hasActivity(entry)) {
       break;
     }
     streak += 1;
+    lastActiveDay = cursor;
   }
 
-  return streak;
+  return {
+    streakDays: streak,
+    streakBreakAt: lastActiveDay
+      ? (() => {
+          const breakAt = addUtcDays(lastActiveDay, 1);
+          breakAt.setUTCHours(23, 59, 59, 999);
+          return breakAt.toISOString();
+        })()
+      : null,
+  };
 }
 
 export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
@@ -91,11 +109,26 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   const today = toUtcDateOnly(new Date());
   const weekStart = startOfUtcWeek(today);
   const weekEnd = addUtcDays(weekStart, 6);
-  const recentStart = addUtcDays(today, -27);
+  const tomorrow = addUtcDays(today, 1);
 
-  const [todoTotal, todoDone, todaySummaryRow, weekSummaryRow, recentDailySummaries] = await Promise.all([
+  const [todoTotal, todoDone, todosTodayCompleted, todosTodayPlanned, todaySummaryRow, weekSummaryRow, allDailySummaries] = await Promise.all([
     prisma.todoItem.count({ where: { userId: user.id } }),
     prisma.todoItem.count({ where: { userId: user.id, isDone: true } }),
+    prisma.todoItem.count({
+      where: {
+        userId: user.id,
+        completedAt: {
+          gte: today,
+          lt: tomorrow,
+        },
+      },
+    }),
+    prisma.todoItem.count({
+      where: {
+        userId: user.id,
+        OR: [{ completedAt: null }, { completedAt: { gte: today } }],
+      },
+    }),
     prisma.dailyStudySummary.findFirst({
       where: { userId: user.id, day: today },
       select: {
@@ -115,17 +148,18 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       },
     }),
     prisma.dailyStudySummary.findMany({
-      where: { userId: user.id, day: { gte: recentStart, lte: today } },
+      where: { userId: user.id, day: { lte: today } },
       orderBy: { day: "asc" },
       select: {
         day: true,
         studiedMinutes: true,
         focusSessions: true,
+        todosCompleted: true,
       },
     }),
   ]);
 
-  const dailyMap = new Map(recentDailySummaries.map((entry) => [entry.day.toISOString().slice(0, 10), entry]));
+  const dailyMap = new Map(allDailySummaries.map((entry) => [entry.day.toISOString().slice(0, 10), entry]));
   const dailySeries = Array.from({ length: 7 }, (_, index) => {
     const day = addUtcDays(weekStart, index);
     const key = day.toISOString().slice(0, 10);
@@ -138,11 +172,12 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     };
   });
 
-  const streakDays = countStreak(
-    recentDailySummaries.map((entry) => ({
+  const streakState = getStreakState(
+    allDailySummaries.map((entry) => ({
       day: entry.day,
       studiedMinutes: entry.studiedMinutes,
       focusSessions: entry.focusSessions,
+      todosCompleted: entry.todosCompleted,
     })),
     today,
   );
@@ -150,8 +185,8 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   const todaySummary = todaySummaryRow ?? {
     studiedMinutes: 0,
     focusSessions: 0,
-    todosCompleted: 0,
-    todosPlanned: 0,
+    todosCompleted: todosTodayCompleted,
+    todosPlanned: todosTodayPlanned,
   };
 
   const weekSummary = weekSummaryRow ?? {
@@ -167,14 +202,19 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       done: todoDone,
       open: Math.max(0, todoTotal - todoDone),
     },
-    todaySummary,
+    todaySummary: {
+      ...todaySummary,
+      todosCompleted: todosTodayCompleted,
+      todosPlanned: todosTodayPlanned,
+    },
     weekSummary: {
       ...weekSummary,
       weekStart: weekStart.toISOString().slice(0, 10),
       weekEnd: weekEnd.toISOString().slice(0, 10),
       todosPlanned: todoTotal,
     },
-    streakDays,
+    streakDays: streakState.streakDays,
+    streakBreakAt: streakState.streakBreakAt,
     dailySeries,
   };
 }

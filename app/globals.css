@@ -137,6 +137,18 @@ body {
   * {
     @apply border-border outline-ring/50;
   }
+  button,
+  [role="button"],
+  input[type="button"],
+  input[type="submit"] {
+    cursor: pointer;
+  }
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  input[type="button"]:disabled,
+  input[type="submit"]:disabled {
+    cursor: default;
+  }
   body {
     @apply bg-background text-foreground;
   }
