@@ -243,7 +243,7 @@ export function TodoPanel() {
       }
     }, 5000);
 
-    setPendingSaves((prev) => new Map(prev).set(id, timeoutId));
+    setPendingSaves((prev) => new Map(prev).set(id, timeoutId as unknown as NodeJS.Timeout));
   };
 
   const remove = async (id: string) => {

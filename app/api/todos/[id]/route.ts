@@ -12,7 +12,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const body = (await request.json()) as {
     title?: string;
     description?: string | null;
-    done?: boolean;
+    isDone?: boolean;
     priority?: "LOW" | "MEDIUM" | "HIGH";
     estimatedMinutes?: number | null;
     sortOrder?: number | null;
@@ -23,11 +23,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     data: {
       title: body.title?.trim(),
       description: body.description === undefined ? undefined : body.description?.trim() || null,
-      isDone: body.done,
+      isDone: body.isDone,
       priority: body.priority,
       estimatedMinutes: body.estimatedMinutes ?? undefined,
       sortOrder: body.sortOrder ?? undefined,
-      completedAt: body.done === undefined ? undefined : body.done ? new Date() : null,
+      completedAt: body.isDone === undefined ? undefined : body.isDone ? new Date() : null,
     },
   });
 

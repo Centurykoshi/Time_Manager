@@ -5,6 +5,9 @@ import { motion } from "framer-motion";
 import { CheckCircle2, Clock, CircleDot, Flame } from "lucide-react";
 import { TimerPanel } from "./components/TimerPanel";
 import { TodoPanel } from "./components/TodoPanel";
+import { Sidebar } from "./components/Sidebar";
+import { TodosPage } from "./components/TodosPage";
+import { GoalsPage } from "./components/GoalsPage";
 
 type DashboardSnapshot = {
   todosSummary: { total: number; done: number; open: number };
@@ -21,6 +24,8 @@ type DashboardSnapshot = {
   streakBreakAt: string | null;
   dailySeries: Array<{ day: string; label: string; studiedMinutes: number; focusSessions: number }>;
 };
+
+type SidebarPage = "main" | "todos" | "goals";
 
 function formatTimeUntilStreakBreak(reference: Date, snapshot: DashboardSnapshot | null) {
   if (!snapshot || snapshot.streakDays <= 0) return "0m";
@@ -47,6 +52,9 @@ function formatTimeUntilStreakBreak(reference: Date, snapshot: DashboardSnapshot
 export default function Home() {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
   const [now, setNow] = useState(() => new Date());
+  const [currentPage, setCurrentPage] = useState<SidebarPage>("main");
+  const [todoCount, setTodoCount] = useState(0);
+  const [goalCount, setGoalCount] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -58,11 +66,34 @@ export default function Home() {
       if (active) setSnapshot(data);
     };
 
+    const loadCounts = async () => {
+      try {
+        const [todosRes, goalsRes] = await Promise.all([
+          fetch("/api/todos"),
+          fetch("/api/goals"),
+        ]);
+
+        if (todosRes.ok) {
+          const todosData = (await todosRes.json()) as { todos: Array<{ id: string }> };
+          setTodoCount(todosData.todos.length);
+        }
+
+        if (goalsRes.ok) {
+          const goalsData = (await goalsRes.json()) as { goals: Array<{ id: string }> };
+          setGoalCount(goalsData.goals.length);
+        }
+      } catch (error) {
+        console.error("Failed to load counts:", error);
+      }
+    };
+
     const refresh = () => {
       void load();
+      void loadCounts();
     };
 
     void load();
+    void loadCounts();
     window.addEventListener("dashboard:changed", refresh);
 
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
@@ -86,7 +117,7 @@ export default function Home() {
           initial={{ y: -10 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.3 }}
-          className="mx-auto flex max-w-6xl items-center justify-between"
+          className="mx-auto flex max-w-7xl items-center justify-between"
         >
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
@@ -100,29 +131,59 @@ export default function Home() {
         </motion.div>
       </header>
 
-      <main className="flex-1 px-8 py-8">
-        <div className="mx-auto max-w-6xl">
-          <motion.div
-            initial={{ y: 10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
-            className="space-y-2 mb-8"
-          >
-            <h1 className="text-3xl font-semibold">Focus session</h1>
-            <p className="text-sm text-muted-foreground">Stay focused and finish what matters</p>
-          </motion.div>
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar 
+          activePage={currentPage} 
+          onPageChange={setCurrentPage}
+          todoCount={todoCount}
+          goalCount={goalCount}
+        />
+        <main className="flex-1 overflow-auto px-8 py-8">
+          <div className="mx-auto max-w-4xl">
+            {currentPage === "main" && (
+              <motion.div
+                key="main"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                className="space-y-8"
+              >
+                <motion.div
+                  initial={{ y: 10, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ duration: 0.3, delay: 0.1 }}
+                  className="space-y-2 mb-8"
+                >
+                  <h1 className="text-3xl font-semibold">Focus session</h1>
+                  <p className="text-sm text-muted-foreground">Stay focused and finish what matters</p>
+                </motion.div>
 
-          <motion.div
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.3, delay: 0.2 }}
-            className="grid gap-6 lg:grid-cols-[1.2fr_1fr]"
-          >
-            <TimerPanel />
-            <TodoPanel />
-          </motion.div>
-        </div>
-      </main>
+                <motion.div
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ duration: 0.3, delay: 0.2 }}
+                  className="grid gap-6 lg:grid-cols-[1.2fr_1fr]"
+                >
+                  <TimerPanel />
+                  <TodoPanel />
+                </motion.div>
+              </motion.div>
+            )}
+
+            {currentPage === "todos" && (
+              <div key="todos">
+                <TodosPage />
+              </div>
+            )}
+
+            {currentPage === "goals" && (
+              <div key="goals">
+                <GoalsPage />
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
 
       <motion.footer
         initial={{ y: 20, opacity: 0 }}
@@ -130,7 +191,7 @@ export default function Home() {
         transition={{ duration: 0.3, delay: 0.3 }}
         className="border-t border-border/40 bg-card/50 px-8 py-4"
       >
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-7xl">
           <div className="grid gap-3 md:grid-cols-4">
             {[
               { label: "Tasks done", value: snapshot?.todosSummary.done ?? 0, sub: `of ${snapshot?.todosSummary.total ?? 0}`, Icon: CheckCircle2, color: "text-emerald-500" },

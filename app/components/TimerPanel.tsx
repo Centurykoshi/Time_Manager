@@ -8,6 +8,18 @@ import { TimerCustomizer } from "./TimerCustomizer";
 
 type TimerStatus = "idle" | "running" | "paused" | "ended";
 
+type TimerSettingsResponse = {
+  animationIcon: string;
+  soundType: string;
+  soundUrl?: string;
+  favoriteMinutes?: number;
+  latestMinutes?: number;
+  timerStatus?: TimerStatus | string;
+  timerDurationSec?: number;
+  timerRemainingSec?: number;
+  timerEndsAt?: string | null;
+};
+
 // YouTube Player type declaration
 declare global {
   interface Window {
@@ -62,6 +74,7 @@ export function TimerPanel() {
   const [showFavoriteModal, setShowFavoriteModal] = useState(false);
   const [favoriteInputValue, setFavoriteInputValue] = useState<string>(String(favoriteMinutes));
   const particleCountRef = useRef(0);
+  const timerEndAtRef = useRef<number | null>(null);
 
   const tickRef = useRef<number | null>(null);
   const savedRunRef = useRef(false);
@@ -75,13 +88,7 @@ export function TimerPanel() {
       try {
         const response = await fetch("/api/timer-settings");
         if (response.ok) {
-          const data = (await response.json()) as {
-            animationIcon: string;
-            soundType: string;
-            soundUrl?: string;
-            favoriteMinutes?: number;
-            latestMinutes?: number;
-          };
+          const data = (await response.json()) as TimerSettingsResponse;
           setAnimationIcon(data.animationIcon);
           setSoundType(data.soundType);
           if (data.soundUrl) setSoundUrl(data.soundUrl);
@@ -90,6 +97,34 @@ export function TimerPanel() {
             setFavoriteInputValue(String(data.favoriteMinutes));
           }
           if (data.latestMinutes) setLatestMinutes(data.latestMinutes);
+
+          const storedDurationSec = clamp(Math.round(data.timerDurationSec ?? 25 * 60), 60, 60 * 180);
+          const persistedStatus = data.timerStatus?.toUpperCase?.() ?? "IDLE";
+          const storedRemainingSec = clamp(Math.round(data.timerRemainingSec ?? storedDurationSec), 0, storedDurationSec);
+          const storedEndsAt = data.timerEndsAt ? new Date(data.timerEndsAt).getTime() : null;
+
+          setDurationMin(Math.max(1, Math.round(storedDurationSec / 60)));
+          setActiveDurationSec(storedDurationSec);
+
+          if (persistedStatus === "RUNNING") {
+            const remainingFromWallClock = storedEndsAt ? Math.max(0, Math.ceil((storedEndsAt - Date.now()) / 1000)) : storedRemainingSec;
+            if (remainingFromWallClock <= 0) {
+              await completeTimer(false, storedDurationSec, 0, true);
+            } else {
+              timerEndAtRef.current = storedEndsAt ?? Date.now() + remainingFromWallClock * 1000;
+              setRemainingSec(remainingFromWallClock);
+              setStatus("running");
+              startTicking(storedDurationSec);
+            }
+          } else if (persistedStatus === "PAUSED") {
+            timerEndAtRef.current = null;
+            setRemainingSec(storedRemainingSec);
+            setStatus("paused");
+          } else {
+            timerEndAtRef.current = null;
+            setRemainingSec(storedDurationSec);
+            setStatus("idle");
+          }
         }
       } catch (error) {
         console.error("Failed to fetch timer settings:", error);
@@ -112,10 +147,84 @@ export function TimerPanel() {
   const durationSec = clamp(Math.round(durationMin * 60), 60, 60 * 180);
   const progress = clamp(remainingSec / Math.max(activeDurationSec, 1), 0, 1);
 
+  const persistTimerState = async (patch: {
+    timerStatus?: TimerStatus;
+    timerDurationSec?: number;
+    timerRemainingSec?: number;
+    timerEndsAt?: string | null;
+  }) => {
+    try {
+      await fetch("/api/timer-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+    } catch (error) {
+      console.error("Failed to persist timer state:", error);
+    }
+  };
+
   const stopTick = () => {
     if (tickRef.current) {
       window.clearInterval(tickRef.current);
       tickRef.current = null;
+    }
+  };
+
+  const startTicking = (sessionDurationSec: number) => {
+    stopTick();
+    tickRef.current = window.setInterval(() => {
+      if (!timerEndAtRef.current) return;
+
+      const nextRemaining = Math.max(0, Math.ceil((timerEndAtRef.current - Date.now()) / 1000));
+      if (nextRemaining <= 0) {
+        void completeTimer(true, sessionDurationSec, 0, true);
+        return;
+      }
+
+      setRemainingSec(nextRemaining);
+    }, 1000);
+  };
+
+  const completeTimer = async (showEnded = true, overrideDurationSec?: number, overrideRemainingSec?: number, shouldPersist = true) => {
+    stopTick();
+    stopAudio();
+
+    const resolvedDuration = overrideDurationSec ?? activeDurationSec;
+    const resolvedRemaining = overrideRemainingSec ?? remainingSec;
+    const elapsedSeconds = Math.max(0, resolvedDuration - resolvedRemaining);
+
+    if (!savedRunRef.current && elapsedSeconds > 0) {
+      savedRunRef.current = true;
+      try {
+        await saveSession(elapsedSeconds);
+      } catch {
+        savedRunRef.current = false;
+      }
+    }
+
+    timerEndAtRef.current = null;
+    setActiveDurationSec(resolvedDuration);
+    setDurationMin(Math.max(1, Math.round(resolvedDuration / 60)));
+
+    if (showEnded) {
+      setStatus("ended");
+      setRemainingSec(0);
+      void chime();
+    } else {
+      setStatus("idle");
+      setRemainingSec(resolvedDuration);
+    }
+
+    savedRunRef.current = false;
+
+    if (shouldPersist) {
+      await persistTimerState({
+        timerStatus: "idle",
+        timerDurationSec: resolvedDuration,
+        timerRemainingSec: resolvedDuration,
+        timerEndsAt: null,
+      });
     }
   };
 
@@ -151,7 +260,7 @@ export function TimerPanel() {
   const applyDuration = (minutes: number) => {
     // Only apply duration changes when timer is idle
     if (status !== "idle") return;
-    
+
     const nextMinutes = clamp(minutes, 1, 180);
     const nextSeconds = clamp(Math.round(nextMinutes * 60), 60, 60 * 180);
 
@@ -160,6 +269,13 @@ export function TimerPanel() {
     setStatus("idle");
     setRemainingSec(nextSeconds);
     setActiveDurationSec(nextSeconds);
+    timerEndAtRef.current = null;
+    void persistTimerState({
+      timerStatus: "idle",
+      timerDurationSec: nextSeconds,
+      timerRemainingSec: nextSeconds,
+      timerEndsAt: null,
+    });
   };
 
   const updateLatestMinutes = async (minutes: number) => {
@@ -234,43 +350,51 @@ export function TimerPanel() {
       // fresh start
       setActiveDurationSec(durationSec);
       setRemainingSec(durationSec);
+      timerEndAtRef.current = Date.now() + durationSec * 1000;
       savedRunRef.current = false;
       void updateLatestMinutes(durationMin);
-      playTimerAnimation(); // Play animation and sound when starting fresh
+      playTimerAnimation();
+      void persistTimerState({
+        timerStatus: "running",
+        timerDurationSec: durationSec,
+        timerRemainingSec: durationSec,
+        timerEndsAt: new Date(timerEndAtRef.current).toISOString(),
+      });
     } else {
       // resuming from pause
+      timerEndAtRef.current = Date.now() + remainingSec * 1000;
       resumeAudio();
+      void persistTimerState({
+        timerStatus: "running",
+        timerDurationSec: activeDurationSec,
+        timerRemainingSec: remainingSec,
+        timerEndsAt: new Date(timerEndAtRef.current).toISOString(),
+      });
     }
 
     setStatus("running");
-    stopTick();
-    tickRef.current = window.setInterval(() => {
-      setRemainingSec((prev) => {
-        if (prev <= 1) {
-          stopTick();
-          if (!savedRunRef.current) {
-            savedRunRef.current = true;
-            void saveSession(activeDurationSec);
-          }
-          setStatus("ended");
-          stopAudio();
-          void chime();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    startTicking(status === "paused" ? activeDurationSec : durationSec);
   };
 
   const pause = () => {
     if (status !== "running") return;
+    const pausedRemaining = timerEndAtRef.current ? Math.max(0, Math.ceil((timerEndAtRef.current - Date.now()) / 1000)) : remainingSec;
+    timerEndAtRef.current = null;
+    setRemainingSec(pausedRemaining);
     setStatus("paused");
     pauseAudio();
     stopTick();
+    void persistTimerState({
+      timerStatus: "paused",
+      timerDurationSec: activeDurationSec,
+      timerRemainingSec: pausedRemaining,
+      timerEndsAt: null,
+    });
   };
 
   const restart = async () => {
-    const elapsedSeconds = activeDurationSec - remainingSec;
+    const resolvedRemaining = timerEndAtRef.current ? Math.max(0, Math.ceil((timerEndAtRef.current - Date.now()) / 1000)) : remainingSec;
+    const elapsedSeconds = activeDurationSec - resolvedRemaining;
     if (!savedRunRef.current && elapsedSeconds > 0) {
       savedRunRef.current = true;
       try {
@@ -281,27 +405,43 @@ export function TimerPanel() {
     }
     stopTick();
     stopAudio();
-    setActiveDurationSec(durationSec);
-    setRemainingSec(durationSec);
-    setStatus("idle");
-  };
-
-  const stop = async () => {
-    const elapsedSeconds = activeDurationSec - remainingSec;
-    if (!savedRunRef.current && elapsedSeconds > 0) {
-      savedRunRef.current = true;
-      try {
-        await saveSession(elapsedSeconds);
-      } catch {
-        savedRunRef.current = false;
-      }
-    }
-    stopTick();
-    stopAudio();
+    timerEndAtRef.current = null;
     setActiveDurationSec(durationSec);
     setRemainingSec(durationSec);
     setStatus("idle");
     savedRunRef.current = false;
+    void persistTimerState({
+      timerStatus: "idle",
+      timerDurationSec: durationSec,
+      timerRemainingSec: durationSec,
+      timerEndsAt: null,
+    });
+  };
+
+  const stop = async () => {
+    const resolvedRemaining = timerEndAtRef.current ? Math.max(0, Math.ceil((timerEndAtRef.current - Date.now()) / 1000)) : remainingSec;
+    const elapsedSeconds = activeDurationSec - resolvedRemaining;
+    if (!savedRunRef.current && elapsedSeconds > 0) {
+      savedRunRef.current = true;
+      try {
+        await saveSession(elapsedSeconds);
+      } catch {
+        savedRunRef.current = false;
+      }
+    }
+    stopTick();
+    stopAudio();
+    timerEndAtRef.current = null;
+    setActiveDurationSec(durationSec);
+    setRemainingSec(durationSec);
+    setStatus("idle");
+    savedRunRef.current = false;
+    void persistTimerState({
+      timerStatus: "idle",
+      timerDurationSec: durationSec,
+      timerRemainingSec: durationSec,
+      timerEndsAt: null,
+    });
   };
 
   useEffect(() => {

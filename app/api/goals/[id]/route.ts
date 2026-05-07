@@ -12,11 +12,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const body = (await request.json()) as {
     title?: string;
     description?: string | null;
-    cadence?: "WEEKLY" | "MONTHLY";
+    cadence?: "WEEKLY" | "MONTHLY" | "YEARLY" | "ALL_TIME";
     targetValue?: number;
     currentValue?: number;
     unit?: string;
     isArchived?: boolean;
+    goalGroupId?: string | null;
   };
 
   const updateResult = await prisma.goal.updateMany({
@@ -29,6 +30,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       currentValue: body.currentValue === undefined ? undefined : Math.max(0, Math.round(body.currentValue)),
       unit: body.unit === undefined ? undefined : body.unit.trim() || "sessions",
       isArchived: body.isArchived,
+      goalGroupId: body.goalGroupId === undefined ? undefined : body.goalGroupId,
     },
   });
 

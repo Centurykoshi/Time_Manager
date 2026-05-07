@@ -22,6 +22,8 @@ enum StudySessionSource {
 enum GoalCadence {
   WEEKLY
   MONTHLY
+  YEARLY
+  ALL_TIME
 }
 
 
@@ -41,6 +43,7 @@ model User {
   dailyStudySummaries DailyStudySummary[]
   weeklyStudySummaries WeeklyStudySummary[]
   goals               Goal[]
+  goalGroups          GoalGroup[]
   timerSettings       TimerSettings?
 
   @@index([email])
@@ -165,12 +168,32 @@ model Goal {
   unit         String      @default("sessions")
   isArchived   Boolean     @default(false)
 
+  goalGroupId  String? 
+  goalGroup    GoalGroup? @relation(fields: [goalGroupId], references: [id], onDelete: SetNull)
+
   userId String
   user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, cadence])
   @@index([userId, isArchived])
   @@map("goals")
+}
+
+model GoalGroup {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  name       String
+  slug       String
+  type       String // 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'ALL_TIME'
+
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goals      Goal[]
+
+  @@unique([userId, slug])
+  @@map("goal_groups")
 }
 
 model TimerSettings {
@@ -183,6 +206,10 @@ model TimerSettings {
   soundUrl      String?
   favoriteMinutes Int     @default(25)
   latestMinutes   Int     @default(25)
+  timerStatus         String   @default("IDLE")
+  timerDurationSec    Int      @default(1500)
+  timerRemainingSec   Int      @default(1500)
+  timerEndsAt         DateTime?
 
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

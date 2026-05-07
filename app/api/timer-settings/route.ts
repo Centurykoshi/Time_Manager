@@ -22,6 +22,9 @@ export async function GET() {
           animationIcon: "Zap",
           soundType: "wind",
           soundUrl: "https://www.youtube.com/watch?v=vKov28ce8vo",
+          timerStatus: "IDLE",
+          timerDurationSec: 25 * 60,
+          timerRemainingSec: 25 * 60,
         },
       });
     }
@@ -36,12 +39,16 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const user = await getDashboardUser();
-    const { animationIcon, soundType, soundUrl, favoriteMinutes, latestMinutes } = (await request.json()) as {
+    const { animationIcon, soundType, soundUrl, favoriteMinutes, latestMinutes, timerStatus, timerDurationSec, timerRemainingSec, timerEndsAt } = (await request.json()) as {
       animationIcon?: string;
       soundType?: string;
       soundUrl?: string;
       favoriteMinutes?: number;
       latestMinutes?: number;
+      timerStatus?: string;
+      timerDurationSec?: number;
+      timerRemainingSec?: number;
+      timerEndsAt?: string | null;
     };
 
     const settings = await prisma.timerSettings.upsert({
@@ -52,6 +59,10 @@ export async function POST(request: Request) {
         ...(soundUrl && { soundUrl }),
         ...(favoriteMinutes !== undefined && { favoriteMinutes }),
         ...(latestMinutes !== undefined && { latestMinutes }),
+        ...(timerStatus !== undefined && { timerStatus }),
+        ...(timerDurationSec !== undefined && { timerDurationSec: Math.max(1, Math.round(timerDurationSec)) }),
+        ...(timerRemainingSec !== undefined && { timerRemainingSec: Math.max(0, Math.round(timerRemainingSec)) }),
+        ...(timerEndsAt !== undefined && { timerEndsAt: timerEndsAt ? new Date(timerEndsAt) : null }),
       },
       create: {
         userId: user.id,
@@ -60,6 +71,10 @@ export async function POST(request: Request) {
         soundUrl: soundUrl || "https://www.youtube.com/watch?v=vKov28ce8vo",
         favoriteMinutes: favoriteMinutes ?? 25,
         latestMinutes: latestMinutes ?? 25,
+        timerStatus: timerStatus || "IDLE",
+        timerDurationSec: Math.max(1, Math.round(timerDurationSec ?? 25 * 60)),
+        timerRemainingSec: Math.max(0, Math.round(timerRemainingSec ?? 25 * 60)),
+        timerEndsAt: timerEndsAt ? new Date(timerEndsAt) : null,
       },
     });
 
@@ -73,12 +88,23 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const user = await getDashboardUser();
-    const { favoriteMinutes, latestMinutes } = (await request.json()) as {
+    const { favoriteMinutes, latestMinutes, timerStatus, timerDurationSec, timerRemainingSec, timerEndsAt } = (await request.json()) as {
       favoriteMinutes?: number;
       latestMinutes?: number;
+      timerStatus?: string;
+      timerDurationSec?: number;
+      timerRemainingSec?: number;
+      timerEndsAt?: string | null;
     };
 
-    if (favoriteMinutes === undefined && latestMinutes === undefined) {
+    if (
+      favoriteMinutes === undefined &&
+      latestMinutes === undefined &&
+      timerStatus === undefined &&
+      timerDurationSec === undefined &&
+      timerRemainingSec === undefined &&
+      timerEndsAt === undefined
+    ) {
       return Response.json({ error: "No valid fields to update." }, { status: 400 });
     }
 
@@ -87,6 +113,10 @@ export async function PATCH(request: Request) {
       update: {
         ...(favoriteMinutes !== undefined && { favoriteMinutes }),
         ...(latestMinutes !== undefined && { latestMinutes }),
+        ...(timerStatus !== undefined && { timerStatus }),
+        ...(timerDurationSec !== undefined && { timerDurationSec: Math.max(1, Math.round(timerDurationSec)) }),
+        ...(timerRemainingSec !== undefined && { timerRemainingSec: Math.max(0, Math.round(timerRemainingSec)) }),
+        ...(timerEndsAt !== undefined && { timerEndsAt: timerEndsAt ? new Date(timerEndsAt) : null }),
       },
       create: {
         userId: user.id,
@@ -95,6 +125,10 @@ export async function PATCH(request: Request) {
         soundUrl: "https://www.youtube.com/watch?v=vKov28ce8vo",
         favoriteMinutes: favoriteMinutes ?? 25,
         latestMinutes: latestMinutes ?? 25,
+        timerStatus: timerStatus || "IDLE",
+        timerDurationSec: Math.max(1, Math.round(timerDurationSec ?? 25 * 60)),
+        timerRemainingSec: Math.max(0, Math.round(timerRemainingSec ?? 25 * 60)),
+        timerEndsAt: timerEndsAt ? new Date(timerEndsAt) : null,
       },
     });
 
