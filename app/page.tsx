@@ -8,6 +8,9 @@ import { TodoPanel } from "./components/TodoPanel";
 import { Sidebar } from "./components/Sidebar";
 import { TodosPage } from "./components/TodosPage";
 import { GoalsPage } from "./components/GoalsPage";
+import { XpPage } from "./components/XpPage";
+import { CommandSearch } from "./components/CommandSearch";
+import { ThemeToggle } from "./components/ui/theme-toggle";
 
 type DashboardSnapshot = {
   todosSummary: { total: number; done: number; open: number };
@@ -25,7 +28,22 @@ type DashboardSnapshot = {
   dailySeries: Array<{ day: string; label: string; studiedMinutes: number; focusSessions: number }>;
 };
 
-type SidebarPage = "main" | "todos" | "goals";
+type SidebarPage = "main" | "todos" | "goals" | "xp";
+
+type DashboardTodo = {
+  id: string;
+  createdAt: string;
+  isDone: boolean;
+};
+
+function startOfLocalDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function isSameLocalDay(left: string, right: Date) {
+  const leftDate = new Date(left);
+  return startOfLocalDay(leftDate).getTime() === startOfLocalDay(right).getTime();
+}
 
 function formatTimeUntilStreakBreak(reference: Date, snapshot: DashboardSnapshot | null) {
   if (!snapshot || snapshot.streakDays <= 0) return "0m";
@@ -55,6 +73,11 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState<SidebarPage>("main");
   const [todoCount, setTodoCount] = useState(0);
   const [goalCount, setGoalCount] = useState(0);
+  const [todosForTodayStats, setTodosForTodayStats] = useState<DashboardTodo[]>([]);
+
+  const todaysTodos = todosForTodayStats.filter((todo) => isSameLocalDay(todo.createdAt, now));
+  const todaysDoneCount = todaysTodos.filter((todo) => todo.isDone).length;
+  const todaysOpenCount = Math.max(0, todaysTodos.length - todaysDoneCount);
 
   useEffect(() => {
     let active = true;
@@ -74,8 +97,9 @@ export default function Home() {
         ]);
 
         if (todosRes.ok) {
-          const todosData = (await todosRes.json()) as { todos: Array<{ id: string }> };
+          const todosData = (await todosRes.json()) as { todos: DashboardTodo[] };
           setTodoCount(todosData.todos.length);
+          setTodosForTodayStats(todosData.todos);
         }
 
         if (goalsRes.ok) {
@@ -117,7 +141,7 @@ export default function Home() {
           initial={{ y: -10 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.3 }}
-          className="mx-auto flex max-w-7xl items-center justify-between"
+          className="mx-auto flex max-w-7xl items-center justify-between gap-4"
         >
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
@@ -127,6 +151,11 @@ export default function Home() {
               </svg>
             </div>
             <span className="text-sm font-semibold tracking-wide">FocusFlow</span>
+          </div>
+
+          <div className="ml-auto flex items-center gap-3">
+            <CommandSearch onNavigate={setCurrentPage} />
+            <ThemeToggle />
           </div>
         </motion.div>
       </header>
@@ -181,6 +210,12 @@ export default function Home() {
                 <GoalsPage />
               </div>
             )}
+
+            {currentPage === "xp" && (
+              <div key="xp">
+                <XpPage />
+              </div>
+            )}
           </div>
         </main>
       </div>
@@ -194,9 +229,15 @@ export default function Home() {
         <div className="mx-auto max-w-7xl">
           <div className="grid gap-3 md:grid-cols-4">
             {[
-              { label: "Tasks done", value: snapshot?.todosSummary.done ?? 0, sub: `of ${snapshot?.todosSummary.total ?? 0}`, Icon: CheckCircle2, color: "text-emerald-500" },
-              { label: "Study time", value: `${snapshot?.todaySummary.studiedMinutes ?? 0}m`, sub: `${snapshot?.todaySummary.focusSessions ?? 0} sessions`, Icon: Clock, color: "text-blue-500" },
-              { label: "Open tasks", value: snapshot?.todosSummary.open ?? 0, sub: "Ready to focus", Icon: CircleDot, color: "text-amber-500" },
+              { label: "Tasks done today", value: todaysDoneCount, sub: `of ${todaysTodos.length}`, Icon: CheckCircle2, color: "text-emerald-500" },
+              { label: "Study time today", value: `${snapshot?.todaySummary.studiedMinutes ?? 0}m`, sub: `${snapshot?.todaySummary.focusSessions ?? 0} sessions`, Icon: Clock, color: "text-blue-500" },
+              {
+                label: "Open tasks today",
+                value: todaysOpenCount,
+                sub: "Ready to focus",
+                Icon: CircleDot,
+                color: "text-amber-500",
+              },
               {
                 label: "Streak",
                 value: `${snapshot?.streakDays ?? 0}d`,

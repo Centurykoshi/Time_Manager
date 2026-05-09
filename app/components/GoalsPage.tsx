@@ -2,40 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Trash2, Plus } from "lucide-react";
+import { ArrowRight, CalendarDays, Clock3, Target, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-
-type GoalGroupType = "WEEKLY" | "MONTHLY" | "YEARLY" | "ALL_TIME";
-
-type Goal = {
-  id: string;
-  title: string;
-  description?: string;
-  cadence: GoalGroupType;
-  targetValue: number;
-  currentValue: number;
-  unit: string;
-  goalGroup?: { id: string; name: string; type: GoalGroupType } | null;
-};
-
-type GoalGroup = { id: string; name: string; slug: string; type: GoalGroupType };
-
-const groupOrder: GoalGroupType[] = ["WEEKLY", "MONTHLY", "YEARLY", "ALL_TIME"];
-
-const groupLabels: Record<GoalGroupType, string> = {
-  WEEKLY: "Weekly Goals",
-  MONTHLY: "Monthly Goals",
-  YEARLY: "Yearly Goals",
-  ALL_TIME: "All Time Goals",
-};
+import { Goal, GoalCadence, GoalGroup, groupLabels, groupOrder } from "./goals";
+import { GoalDetailPage } from "./GoalDetailPage";
+import { GoalProgressCard } from "./GoalProgressCard";
+import { XpPage } from "./XpPage";
 
 export function GoalsPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [groups, setGroups] = useState<GoalGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeGroupFilter, setActiveGroupFilter] = useState<GoalGroupType | "ALL">("WEEKLY");
+  const [activeGroupFilter, setActiveGroupFilter] = useState<GoalCadence | "ALL">("WEEKLY");
+  const [selectedCadence, setSelectedCadence] = useState<GoalCadence | null>(null);
+  const [activeView, setActiveView] = useState<"goals" | "xp">("goals");
 
   useEffect(() => {
     loadAll();
@@ -61,7 +41,7 @@ export function GoalsPage() {
     }
   };
 
-  const createGoal = async (group: GoalGroup, title: string, target: number) => {
+  const createGoal = async (group: GoalGroup, title: string, target: number, description: string, unit: string) => {
     if (!title || !target) return null;
     try {
       const res = await fetch("/api/goals", {
@@ -69,8 +49,11 @@ export function GoalsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title,
+          description: description.trim() || null,
           targetValue: Math.round(target),
           cadence: group.type,
+          currentValue: 0,
+          unit: unit.trim() || "sessions",
           goalGroupId: group.id,
         }),
       });
@@ -117,159 +100,124 @@ export function GoalsPage() {
   };
 
   const orderedGroups = groupOrder.map((type) => groups.find((group) => group.type === type)).filter(Boolean) as GoalGroup[];
-  const goalsForGroup = (groupType: GoalGroupType) => goals.filter((goal) => goal.goalGroup?.type === groupType);
-  const visibleGoals = goals.filter((goal) => {
-    if (activeGroupFilter === "ALL") return true;
-    return goal.goalGroup?.type === activeGroupFilter || (!goal.goalGroup && goal.cadence === activeGroupFilter);
-  });
+  const goalsForGroup = (groupType: GoalCadence) => goals.filter((goal) => goal.goalGroup?.type === groupType || (!goal.goalGroup && goal.cadence === groupType));
+  const visibleGoals = activeGroupFilter === "ALL" ? goals : goalsForGroup(activeGroupFilter);
+  const selectedGroup = selectedCadence ? groups.find((group) => group.type === selectedCadence) : null;
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-8">
       <div className="space-y-2">
         <h1 className="text-3xl font-semibold">Goals</h1>
-        <p className="text-sm text-muted-foreground">{goals.length} active goal{goals.length !== 1 ? "s" : ""}</p>
+        <p className="text-sm text-muted-foreground">
+          {goals.length} active goal{goals.length !== 1 ? "s" : ""} • XP grows from completed focus sessions
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {orderedGroups.map((group) => (
-          <GoalGroupCard
-            key={group.id}
-            group={group}
-            goals={goalsForGroup(group.type)}
-            onCreate={createGoal}
-            onDelete={handleDeleteGoal}
-          />
-        ))}
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => setActiveGroupFilter("ALL")} className={cn("rounded-md px-3 py-1.5 text-sm transition-colors", activeGroupFilter === "ALL" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80")}>
-            All Goals
-          </button>
-          {groupOrder.map((type) => (
-            <button key={type} onClick={() => setActiveGroupFilter(type)} className={cn("rounded-md px-3 py-1.5 text-sm transition-colors", activeGroupFilter === type ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80")}>
-              {groupLabels[type]}
-            </button>
-          ))}
-        </div>
-
-        <div className="space-y-3">
-          {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Loading goals...</div>
-          ) : (
-            visibleGoals.map((goal) => {
-              const progress = Math.min(100, (goal.currentValue / goal.targetValue) * 100);
-              const isComplete = goal.currentValue >= goal.targetValue;
-
-              return (
-                <motion.div key={goal.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }} className={cn("rounded-lg border bg-muted/20 p-4 transition-all hover:border-border/80 hover:bg-muted/40", isComplete ? "border-border/50" : "border-border/50")}>
-                  <div className="space-y-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="text-base font-semibold break-words">{goal.title}</h3>
-                        {goal.description ? <p className="mt-1 break-words text-sm text-muted-foreground">{goal.description}</p> : null}
-                        <p className="mt-2 text-xs text-muted-foreground">{goal.goalGroup?.type ?? goal.cadence}</p>
-                      </div>
-                      <button onClick={() => handleDeleteGoal(goal.id)} className="flex-shrink-0 rounded p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">{goal.currentValue} / {goal.targetValue} {goal.unit}</span>
-                        <span className="font-semibold text-primary">{Math.round(progress)}%</span>
-                      </div>
-
-                      <div className="h-2 overflow-hidden rounded-full bg-muted">
-                        <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.5, ease: "easeOut" }} className="h-full rounded-full bg-primary" />
-                      </div>
-
-                      <div className="flex gap-2 pt-2">
-                        <button onClick={() => handleUpdateProgress(goal.id, Math.min(goal.currentValue + 1, goal.targetValue))} className="rounded bg-muted px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted/80">+1</button>
-                        <button onClick={() => handleUpdateProgress(goal.id, Math.min(goal.currentValue + 5, goal.targetValue))} className="rounded bg-muted px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted/80">+5</button>
-                        <button onClick={() => handleUpdateProgress(goal.id, Math.min(goal.currentValue + 10, goal.targetValue))} className="rounded bg-muted px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted/80">+10</button>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })
+      <div className="inline-flex rounded-full border border-border/60 bg-muted/20 p-1">
+        <button
+          onClick={() => setActiveView("goals")}
+          className={cn(
+            "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm transition-colors",
+            activeView === "goals" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
           )}
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-function GoalGroupCard({
-  group,
-  goals,
-  onCreate,
-  onDelete,
-}: {
-  group: GoalGroup;
-  goals: Goal[];
-  onCreate: (group: GoalGroup, title: string, target: number) => Promise<Goal | null>;
-  onDelete: (id: string) => Promise<void>;
-}) {
-  const [title, setTitle] = useState("");
-  const [target, setTarget] = useState("");
-  const [isAdding, setIsAdding] = useState(false);
-
-  const handleAdd = async () => {
-    const trimmedTitle = title.trim();
-    const parsedTarget = Number(target);
-    if (!trimmedTitle || !Number.isFinite(parsedTarget) || parsedTarget <= 0) return;
-
-    setIsAdding(true);
-    try {
-      const created = await onCreate(group, trimmedTitle, parsedTarget);
-      if (created) {
-        setTitle("");
-        setTarget("");
-      }
-    } finally {
-      setIsAdding(false);
-    }
-  };
-
-  return (
-    <div className="rounded-xl border border-border/60 bg-muted/15 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold">{groupLabels[group.type]}</h2>
-          <p className="text-sm text-muted-foreground">Create and track goals in this bucket.</p>
-        </div>
-        <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">{goals.length}</span>
+        >
+          <Target className="h-4 w-4" />
+          Goals
+        </button>
+        <button
+          onClick={() => setActiveView("xp")}
+          className={cn(
+            "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm transition-colors",
+            activeView === "xp" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Trophy className="h-4 w-4" />
+          XP
+        </button>
       </div>
 
-      <div className="mt-4 space-y-2">
-        <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Goal title" />
-        <div className="flex gap-2">
-          <Input value={target} onChange={(event) => setTarget(event.target.value)} type="number" min="1" placeholder="Target" className="w-28" />
-          <Button onClick={handleAdd} disabled={isAdding} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Add
-          </Button>
-        </div>
-      </div>
+      {activeView === "xp" ? (
+        <XpPage />
+      ) : selectedGroup ? (
+        <GoalDetailPage
+          group={selectedGroup}
+          goals={goalsForGroup(selectedGroup.type)}
+          onBack={() => setSelectedCadence(null)}
+          onCreate={createGoal}
+          onDelete={handleDeleteGoal}
+          onUpdateProgress={handleUpdateProgress}
+        />
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {orderedGroups.map((group) => {
+              const bucketGoals = goalsForGroup(group.type);
+              return (
+                <button
+                  key={group.id}
+                  onClick={() => setSelectedCadence(group.type)}
+                  className={cn(
+                    "group rounded-2xl border border-border/60 bg-muted/15 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-muted/25",
+                    "focus:outline-none focus:ring-2 focus:ring-primary/40",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                        {group.type === "WEEKLY" ? <CalendarDays className="h-3.5 w-3.5" /> : group.type === "MONTHLY" ? <Clock3 className="h-3.5 w-3.5" /> : <Target className="h-3.5 w-3.5" />}
+                        {group.type}
+                      </div>
+                      <h2 className="mt-2 text-lg font-semibold">{groupLabels[group.type]}</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">Open the {groupLabels[group.type].toLowerCase()} page.</p>
+                    </div>
+                    <div className="rounded-full bg-background/60 px-2.5 py-1 text-xs text-muted-foreground">{bucketGoals.length}</div>
+                  </div>
 
-      <div className="mt-4 space-y-2">
-        {goals.length === 0 ? <p className="text-sm text-muted-foreground">No goals yet.</p> : null}
-        {goals.slice(0, 3).map((goal) => (
-          <div key={goal.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/30 bg-background/40 px-3 py-2">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{goal.title}</p>
-              <p className="text-xs text-muted-foreground">{goal.currentValue} / {goal.targetValue} {goal.unit}</p>
-            </div>
-            <button onClick={() => void onDelete(goal.id)} className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label="Delete goal">
-              <Trash2 className="h-4 w-4" />
-            </button>
+                  <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+                    <span>Manage goals</span>
+                    <span className="inline-flex items-center gap-1 text-primary transition-transform group-hover:translate-x-0.5">
+                      Open <ArrowRight className="h-4 w-4" />
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
-        ))}
-      </div>
-    </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold">All goals</h2>
+                <p className="text-sm text-muted-foreground">
+                  Showing {activeGroupFilter === "ALL" ? "all goals" : groupLabels[activeGroupFilter]}.
+                </p>
+              </div>
+              <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">{visibleGoals.length} items</span>
+            </div>
+
+            <div className="space-y-3">
+              {isLoading ? (
+                <div className="rounded-2xl border border-border/60 bg-muted/15 px-4 py-8 text-center text-sm text-muted-foreground">Loading goals...</div>
+              ) : visibleGoals.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border/60 bg-muted/10 px-4 py-8 text-center text-sm text-muted-foreground">No goals match this filter.</div>
+              ) : (
+                visibleGoals.map((goal) => <GoalProgressCard key={goal.id} goal={goal} onDelete={handleDeleteGoal} onUpdateProgress={handleUpdateProgress} />)
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button onClick={() => setActiveGroupFilter("ALL")} className={cn("rounded-md px-3 py-1.5 text-sm transition-colors", activeGroupFilter === "ALL" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80")}>
+                All Goals
+              </button>
+              {groupOrder.map((type) => (
+                <button key={type} onClick={() => setActiveGroupFilter(type)} className={cn("rounded-md px-3 py-1.5 text-sm transition-colors", activeGroupFilter === type ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80")}>
+                  {groupLabels[type]}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </motion.div>
   );
 }

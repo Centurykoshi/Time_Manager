@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
     description?: string;
     estimatedMinutes?: number | null;
     priority?: "LOW" | "MEDIUM" | "HIGH";
+    difficulty?: "EASY" | "MEDIUM" | "HARD" | "BOSS";
   };
 
   const title = body.title?.trim();
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest) {
       description: body.description?.trim() || null,
       estimatedMinutes: body.estimatedMinutes ?? null,
       priority: body.priority ?? "MEDIUM",
+      difficulty: body.difficulty ?? "EASY",
     },
   });
 

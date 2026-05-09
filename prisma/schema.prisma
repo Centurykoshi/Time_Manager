@@ -13,6 +13,13 @@ enum TodoPriority {
   HIGH
 }
 
+enum TodoDifficulty {
+  EASY
+  MEDIUM
+  HARD
+  BOSS
+}
+
 enum StudySessionSource {
   TIMER
   MANUAL
@@ -59,10 +66,12 @@ model TodoItem {
   description    String?  @db.Text
   isDone         Boolean  @default(false)
   priority       TodoPriority @default(MEDIUM)
+  difficulty     TodoDifficulty @default(EASY)
   estimatedMinutes Int?
   sortOrder      Int      @default(0)
   dueAt          DateTime?
   completedAt    DateTime?
+  xpEarned       Int      @default(0)
 
   tagId String?
   tag   TodoTag? @relation(fields: [tagId], references: [id], onDelete: SetNull)

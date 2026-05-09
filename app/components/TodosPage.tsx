@@ -6,6 +6,9 @@ import { CheckCircle2, Trash2, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Badge } from "./ui/badge";
+
+type Difficulty = "EASY" | "MEDIUM" | "HARD" | "BOSS";
 
 type TodoItem = {
   id: string;
@@ -16,6 +19,7 @@ type TodoItem = {
   dueAt?: string;
   priority: "LOW" | "MEDIUM" | "HIGH";
   estimatedMinutes?: number;
+  difficulty?: Difficulty;
 };
 
 type TimeFilter = "today" | "week" | "month" | "year" | "allTime";
@@ -27,15 +31,9 @@ export function TodosPage() {
   const [isAdding, setIsAdding] = useState(false);
   const [activeFilter, setActiveFilter] = useState<TimeFilter>("today");
 
-  useEffect(() => {
-    fetchTodos();
-    window.addEventListener("dashboard:changed", fetchTodos);
-    return () => window.removeEventListener("dashboard:changed", fetchTodos);
-  }, []);
-
-  const fetchTodos = async () => {
+  async function fetchTodos() {
     try {
-      const response = await fetch("/api/todos");
+      const response = await fetch("/api/todos", { cache: "no-store" });
       if (response.ok) {
         const data = (await response.json()) as { todos: TodoItem[] };
         setTodos(data.todos);
@@ -45,7 +43,13 @@ export function TodosPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }
+
+  useEffect(() => {
+    fetchTodos();
+    window.addEventListener("dashboard:changed", fetchTodos);
+    return () => window.removeEventListener("dashboard:changed", fetchTodos);
+  }, []);
 
   const getFilteredTodos = () => {
     const now = new Date();
@@ -85,8 +89,7 @@ export function TodosPage() {
       });
 
       if (response.ok) {
-        const data = (await response.json()) as { todo: TodoItem };
-        setTodos([data.todo, ...todos]);
+        await fetchTodos();
         setNewTodoTitle("");
         window.dispatchEvent(new Event("dashboard:changed"));
       }
@@ -106,7 +109,7 @@ export function TodosPage() {
       });
 
       if (response.ok) {
-        setTodos(todos.map((t) => (t.id === id ? { ...t, isDone: !currentStatus } : t)));
+        await fetchTodos();
         window.dispatchEvent(new Event("dashboard:changed"));
       }
     } catch (error) {
@@ -119,7 +122,7 @@ export function TodosPage() {
       const response = await fetch(`/api/todos/${id}`, { method: "DELETE" });
 
       if (response.ok) {
-        setTodos(todos.filter((t) => t.id !== id));
+        await fetchTodos();
         window.dispatchEvent(new Event("dashboard:changed"));
       }
     } catch (error) {
@@ -252,6 +255,11 @@ export function TodosPage() {
                   )}
 
                   <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground flex-wrap">
+                    {todo.difficulty && (
+                      <Badge variant="outline" className="h-5 px-2 text-[10px]">
+                        {todo.difficulty}
+                      </Badge>
+                    )}
                     {todo.dueAt && (
                       <span>Due: {new Date(todo.dueAt).toLocaleDateString()}</span>
                     )}

@@ -1,19 +1,20 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ListTodo, Target, Home } from "lucide-react";
+import { ListTodo, Target, Home, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type SidebarPage = "main" | "todos" | "goals";
+type SidebarPage = "main" | "todos" | "goals" | "xp";
 
 interface SidebarProps {
   activePage: SidebarPage;
   onPageChange: (page: SidebarPage) => void;
   todoCount: number;
   goalCount: number;
+  xpCount?: number;
 }
 
-export function Sidebar({ activePage, onPageChange, todoCount, goalCount }: SidebarProps) {
+export function Sidebar({ activePage, onPageChange, todoCount, goalCount, xpCount }: SidebarProps) {
   return (
     <motion.aside
       initial={{ x: -20, opacity: 0 }}
@@ -47,6 +48,13 @@ export function Sidebar({ activePage, onPageChange, todoCount, goalCount }: Side
           active={activePage === "goals"}
           onClick={() => onPageChange("goals")}
           badge={goalCount}
+        />
+        <NavButton
+          icon={<Trophy className="w-4 h-4" />}
+          label="Experience"
+          active={activePage === "xp"}
+          onClick={() => onPageChange("xp")}
+          badge={xpCount}
         />
       </nav>
     </motion.aside>

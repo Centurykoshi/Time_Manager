@@ -20,9 +20,9 @@ const ANIMATIONS = [
 ];
 
 const SOUNDS = [
-  { name: "Wind", type: "wind", url: "https://www.youtube.com/watch?v=-UfI1X-MSig" },
-  { name: "Night", type: "night", url: "https://www.youtube.com/watch?v=_QqabGYTSpQ" },
-  { name: "Rain", type: "rain", url: "https://www.youtube.com/watch?v=XKDGZ-VWLMg" },
+  { name: "Wind", type: "wind", url: "https://www.youtube.com/watch?v=LjRygr4xR7g&t=1496s" },
+  { name: "Night", type: "night", url: "https://www.youtube.com/watch?v=DXT9dF-WK-I" },
+  { name: "Rain", type: "rain", url: "https://www.youtube.com/watch?v=sUwD3GRPJos" },
 ];
 
 type TimerSettings = {
@@ -39,7 +39,7 @@ export function TimerCustomizer({ onSettingsChange }: TimerCustomizerProps = {})
   const [settings, setSettings] = useState<TimerSettings>({
     animationIcon: "Zap",
     soundType: "wind",
-    soundUrl: "https://www.youtube.com/watch?v=-UfI1X-MSig",
+    soundUrl: "https://www.youtube.com/watch?v=LjRygr4xR7g&t=1496s",
   });
   const [isOpen, setIsOpen] = useState(false);
 

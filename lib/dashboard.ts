@@ -111,22 +111,26 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   const weekEnd = addUtcDays(weekStart, 6);
   const tomorrow = addUtcDays(today, 1);
 
-  const [todoTotal, todoDone, todosTodayCompleted, todosTodayPlanned, todaySummaryRow, weekSummaryRow, allDailySummaries] = await Promise.all([
+  const [todoTotal, todoDone, todosTodayDone, todosTodayTotal, todaySummaryRow, weekSummaryRow, allDailySummaries] = await Promise.all([
     prisma.todoItem.count({ where: { userId: user.id } }),
     prisma.todoItem.count({ where: { userId: user.id, isDone: true } }),
     prisma.todoItem.count({
       where: {
         userId: user.id,
-        completedAt: {
+        createdAt: {
           gte: today,
           lt: tomorrow,
         },
+        isDone: true,
       },
     }),
     prisma.todoItem.count({
       where: {
         userId: user.id,
-        OR: [{ completedAt: null }, { completedAt: { gte: today } }],
+        createdAt: {
+          gte: today,
+          lt: tomorrow,
+        },
       },
     }),
     prisma.dailyStudySummary.findFirst({
@@ -185,8 +189,8 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   const todaySummary = todaySummaryRow ?? {
     studiedMinutes: 0,
     focusSessions: 0,
-    todosCompleted: todosTodayCompleted,
-    todosPlanned: todosTodayPlanned,
+    todosCompleted: todosTodayDone,
+    todosPlanned: todosTodayTotal,
   };
 
   const weekSummary = weekSummaryRow ?? {
@@ -204,8 +208,8 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     },
     todaySummary: {
       ...todaySummary,
-      todosCompleted: todosTodayCompleted,
-      todosPlanned: todosTodayPlanned,
+      todosCompleted: todosTodayDone,
+      todosPlanned: todosTodayTotal,
     },
     weekSummary: {
       ...weekSummary,

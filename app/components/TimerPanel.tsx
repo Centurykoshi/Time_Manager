@@ -22,6 +22,8 @@ type TimerSettingsResponse = {
 
 // YouTube Player type declaration
 declare global {
+  var timerAudioPlayer: YTPlayer | null;
+
   interface Window {
     YT: {
       Player: new (elementId: string, options: Record<string, unknown>) => YTPlayer;
@@ -44,6 +46,7 @@ interface YTPlayer {
   pauseVideo(): void;
   stopVideo(): void;
   getPlayerState(): number;
+  cueVideoById(videoId: string): void;
 }
 
 const presets = [15, 20, 25, 45, 60];
@@ -67,7 +70,7 @@ export function TimerPanel() {
   const [isDragging, setIsDragging] = useState(false);
   const [animationIcon, setAnimationIcon] = useState("Zap");
   const [soundType, setSoundType] = useState("wind");
-  const [soundUrl, setSoundUrl] = useState("https://www.youtube.com/watch?v=vKov28ce8vo");
+  const [soundUrl, setSoundUrl] = useState("https://www.youtube.com/watch?v=LjRygr4xR7g&t=1496s");
   const [favoriteMinutes, setFavoriteMinutes] = useState<number>(25);
   const [latestMinutes, setLatestMinutes] = useState<number>(25);
   const [animationParticles, setAnimationParticles] = useState<Array<{ id: number; x: number; y: number }>>([]);
@@ -81,7 +84,15 @@ export function TimerPanel() {
   const svgRef = useRef<SVGSVGElement>(null);
   const dragStartRef = useRef({ y: 0, time: 0 });
   const audioContextRef = useRef<AudioContext | null>(null);
-  const playerRef = useRef<YTPlayer | null>(null);
+  const shouldAudioPlayRef = useRef(false);
+
+  // Get global player ref that persists across page navigations
+  const getPlayerRef = () => {
+    if (!globalThis.timerAudioPlayer) {
+      globalThis.timerAudioPlayer = null;
+    }
+    return globalThis;
+  };
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -132,16 +143,25 @@ export function TimerPanel() {
     };
 
     void fetchSettings();
+  }, []);
 
-    // Load YouTube IFrame API
-    if (!window.YT) {
-      const tag = document.createElement("script");
-      tag.src = "https://www.youtube.com/iframe_api";
-      const firstScriptTag = document.getElementsByTagName("script")[0];
-      if (firstScriptTag && firstScriptTag.parentNode) {
-        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+  // Handle tab visibility: resume audio when returning to tab
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && shouldAudioPlayRef.current) {
+        const player = globalThis.timerAudioPlayer;
+        if (player) {
+          try {
+            player.playVideo();
+          } catch {
+            // Silent fail
+          }
+        }
       }
-    }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
   const durationSec = clamp(Math.round(durationMin * 60), 60, 60 * 180);
@@ -507,46 +527,61 @@ export function TimerPanel() {
       setAnimationParticles([]);
     }, 800);
 
-    // Play YouTube sound via YouTube API
+    // Play YouTube sound via YouTube API (using global player)
     if (soundUrl) {
       const youtubeId = soundUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^\&\?]*)/)?.[1];
       if (youtubeId) {
         const iframeContainer = document.getElementById("timer-sound-player");
         if (iframeContainer) {
-          iframeContainer.innerHTML = `<div id="yt-player"></div>`;
-          
-          // Wait for YouTube API to be ready
-          const checkAPI = setInterval(() => {
-            if (window.YT && window.YT.Player) {
-              clearInterval(checkAPI);
-              try {
-                playerRef.current = new window.YT.Player("yt-player", {
-                  height: "0",
-                  width: "0",
-                  videoId: youtubeId,
-                  events: {
-                    onReady: (event: { target: YTPlayer }) => {
-                      event.target.playVideo();
+          // Only create player if it doesn't exist
+          if (!globalThis.timerAudioPlayer) {
+            iframeContainer.innerHTML = `<div id="yt-player"></div>`;
+            
+            // Wait for YouTube API to be ready
+            const checkAPI = setInterval(() => {
+              if (window.YT && window.YT.Player) {
+                clearInterval(checkAPI);
+                try {
+                  globalThis.timerAudioPlayer = new window.YT.Player("yt-player", {
+                    height: "0",
+                    width: "0",
+                    videoId: youtubeId,
+                    events: {
+                      onReady: (event: { target: YTPlayer }) => {
+                        shouldAudioPlayRef.current = true;
+                        event.target.playVideo();
+                      },
                     },
-                  },
-                });
-              } catch {
-                // Silent fail if player creation fails
+                  });
+                } catch {
+                  // Silent fail if player creation fails
+                }
               }
-            }
-          }, 100);
+            }, 100);
 
-          // Timeout after 2 seconds
-          setTimeout(() => clearInterval(checkAPI), 2000);
+            // Timeout after 2 seconds
+            setTimeout(() => clearInterval(checkAPI), 2000);
+          } else if (globalThis.timerAudioPlayer) {
+            // Player exists, just change video and play
+            shouldAudioPlayRef.current = true;
+            try {
+              globalThis.timerAudioPlayer.cueVideoById(youtubeId);
+              globalThis.timerAudioPlayer.playVideo();
+            } catch {
+              // Silent fail
+            }
+          }
         }
       }
     }
   };
 
   const pauseAudio = () => {
-    if (playerRef.current) {
+    shouldAudioPlayRef.current = false;
+    const player = globalThis.timerAudioPlayer;
+    if (player) {
       try {
-        playerRef.current.pauseVideo();
+        player.pauseVideo();
       } catch {
         // Silent fail
       }
@@ -554,9 +589,11 @@ export function TimerPanel() {
   };
 
   const resumeAudio = () => {
-    if (playerRef.current) {
+    shouldAudioPlayRef.current = true;
+    const player = globalThis.timerAudioPlayer;
+    if (player) {
       try {
-        playerRef.current.playVideo();
+        player.playVideo();
       } catch {
         // Silent fail
       }
@@ -564,14 +601,15 @@ export function TimerPanel() {
   };
 
   const stopAudio = () => {
-    if (playerRef.current) {
+    shouldAudioPlayRef.current = false;
+    const player = globalThis.timerAudioPlayer;
+    if (player) {
       try {
-        playerRef.current.stopVideo();
+        player.stopVideo();
       } catch {
         // Silent fail
       }
     }
-    playerRef.current = null;
   };
 
   const handleContextMenu = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -684,7 +722,6 @@ export function TimerPanel() {
         setSoundType(newSettings.soundType);
         if (newSettings.soundUrl) setSoundUrl(newSettings.soundUrl);
       }} />
-      <div id="timer-sound-player" style={{ display: "none" }}></div>
       
       <div className="mb-4 space-y-2">
         <div className="text-xs uppercase tracking-wider text-muted-foreground">Pomodoro timer</div>
