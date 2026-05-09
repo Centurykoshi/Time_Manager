@@ -46,7 +46,9 @@ export function TodosPage() {
   }
 
   useEffect(() => {
-    fetchTodos();
+    queueMicrotask(() => {
+      void fetchTodos();
+    });
     window.addEventListener("dashboard:changed", fetchTodos);
     return () => window.removeEventListener("dashboard:changed", fetchTodos);
   }, []);
@@ -65,7 +67,8 @@ export function TodosPage() {
         case "today":
           return createdDate >= today && createdDate < new Date(today.getTime() + 24 * 60 * 60 * 1000);
         case "week":
-          return createdDate >= weekStart && createdDate < new Date(today.getTime() + 24 * 60 * 60 * 1000);
+          const weekEndDate = new Date(createdDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+          return now < weekEndDate;
         case "month":
           return createdDate >= monthStart && createdDate < new Date(today.getTime() + 24 * 60 * 60 * 1000);
         case "year":
@@ -75,6 +78,37 @@ export function TodosPage() {
           return true;
       }
     });
+  };
+
+  const getTodoHighlight = (todo: TodoItem) => {
+    if (todo.isDone) {
+      return "border-border/50 hover:border-border/80 hover:bg-muted/50";
+    }
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const createdDate = new Date(todo.createdAt);
+    
+    // Check if todo was created today
+    const todayEnd = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    const createdToday = createdDate >= today && createdDate < todayEnd;
+    
+    if (createdToday) {
+      // No highlight for today's todos
+      return "border-border/50 hover:border-border/80 hover:bg-muted/50";
+    }
+    
+    // Check if todo is more than 7 days old
+    const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const isOlderThanSevenDays = createdDate < sevenDaysAgo;
+    
+    // If older than 7 days AND in month or year view, use destructive
+    if (isOlderThanSevenDays && (activeFilter === "month" || activeFilter === "year")) {
+      return "border-destructive/40 bg-destructive/10 hover:border-destructive/60 hover:bg-destructive/15";
+    }
+    
+    // If created on a previous day (not today), use primary color
+    return "border-primary/40 bg-primary/10 hover:border-primary/60 hover:bg-primary/15";
   };
 
   const handleAddTodo = async () => {
@@ -99,6 +133,7 @@ export function TodosPage() {
       setIsAdding(false);
     }
   };
+
 
   const handleToggleTodo = async (id: string, currentStatus: boolean) => {
     try {
@@ -221,7 +256,8 @@ export function TodosPage() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.2 }}
               className={cn(
-                "p-4 rounded-lg border border-border/50 transition-all hover:border-border/80 hover:bg-muted/50",
+                "p-4 rounded-lg border transition-all",
+                getTodoHighlight(todo),
                 todo.isDone && "opacity-60"
               )}
             >

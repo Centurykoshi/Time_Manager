@@ -11,6 +11,15 @@ export type Goal = {
   createdAt?: string;
   updatedAt?: string;
   goalGroup?: { id: string; name: string; type: GoalCadence } | null;
+  goalTag?: { id: string; name: string; slug: string; goalXp: number; isBuiltin: boolean } | null;
+};
+
+export type TodoTag = {
+  id: string;
+  name: string;
+  slug: string;
+  goalXp: number;
+  isBuiltin: boolean;
 };
 
 export type GoalTemplate = {

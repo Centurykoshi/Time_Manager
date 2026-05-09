@@ -93,10 +93,12 @@ model TodoTag {
   name      String
   slug      String
   isBuiltin Boolean  @default(false)
+  goalXp    Int      @default(10)
 
   userId String
   user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   todos  TodoItem[]
+  goals  Goal[]
 
   @@unique([userId, slug])
   @@index([userId, isBuiltin])
@@ -180,11 +182,15 @@ model Goal {
   goalGroupId  String? 
   goalGroup    GoalGroup? @relation(fields: [goalGroupId], references: [id], onDelete: SetNull)
 
+  goalTagId    String?
+  goalTag      TodoTag?    @relation(fields: [goalTagId], references: [id], onDelete: SetNull)
+
   userId String
   user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, cadence])
   @@index([userId, isArchived])
+  @@index([userId, goalTagId])
   @@map("goals")
 }
 

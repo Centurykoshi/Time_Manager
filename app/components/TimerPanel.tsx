@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Play, Pause, RotateCcw, Heart, History } from "lucide-react";
 import { Button } from "./ui/button";
 import { TimerCustomizer } from "./TimerCustomizer";
+import { notifyTimerComplete } from "@/lib/notifications";
 
 type TimerStatus = "idle" | "running" | "paused" | "ended";
 
@@ -191,7 +192,7 @@ export function TimerPanel() {
     }
   };
 
-  const startTicking = (sessionDurationSec: number) => {
+  function startTicking(sessionDurationSec: number) {
     stopTick();
     tickRef.current = window.setInterval(() => {
       if (!timerEndAtRef.current) return;
@@ -204,9 +205,9 @@ export function TimerPanel() {
 
       setRemainingSec(nextRemaining);
     }, 1000);
-  };
+  }
 
-  const completeTimer = async (showEnded = true, overrideDurationSec?: number, overrideRemainingSec?: number, shouldPersist = true) => {
+  async function completeTimer(showEnded = true, overrideDurationSec?: number, overrideRemainingSec?: number, shouldPersist = true) {
     stopTick();
     stopAudio();
 
@@ -218,6 +219,8 @@ export function TimerPanel() {
       savedRunRef.current = true;
       try {
         await saveSession(elapsedSeconds);
+        // Send notification after session is saved
+        notifyTimerComplete(Math.round(elapsedSeconds / 60));
       } catch {
         savedRunRef.current = false;
       }
@@ -246,7 +249,7 @@ export function TimerPanel() {
         timerEndsAt: null,
       });
     }
-  };
+  }
 
   const dispatchDashboardRefresh = () => {
     window.dispatchEvent(new Event("dashboard:changed"));

@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
     estimatedMinutes?: number | null;
     priority?: "LOW" | "MEDIUM" | "HIGH";
     difficulty?: "EASY" | "MEDIUM" | "HARD" | "BOSS";
+    createdAt?: string;
   };
 
   const title = body.title?.trim();
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Title is required." }, { status: 400 });
   }
 
+  const createdAt = body.createdAt ? new Date(body.createdAt) : null;
   const todo = await prisma.todoItem.create({
     data: {
       userId: user.id,
@@ -34,6 +36,7 @@ export async function POST(request: NextRequest) {
       estimatedMinutes: body.estimatedMinutes ?? null,
       priority: body.priority ?? "MEDIUM",
       difficulty: body.difficulty ?? "EASY",
+      ...(createdAt && !Number.isNaN(createdAt.getTime()) ? { createdAt } : {}),
     },
   });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { CheckCircle2, Clock, CircleDot, Flame } from "lucide-react";
 import { TimerPanel } from "./components/TimerPanel";
@@ -11,6 +11,8 @@ import { GoalsPage } from "./components/GoalsPage";
 import { XpPage } from "./components/XpPage";
 import { CommandSearch } from "./components/CommandSearch";
 import { ThemeToggle } from "./components/ui/theme-toggle";
+import { AuthMenu } from "./components/AuthMenu";
+import { NotificationPermissionBanner } from "./components/NotificationPermissionBanner";
 
 type DashboardSnapshot = {
   todosSummary: { total: number; done: number; open: number };
@@ -34,6 +36,12 @@ type DashboardTodo = {
   id: string;
   createdAt: string;
   isDone: boolean;
+};
+
+type DashboardStudySession = {
+  id: string;
+  startedAt: string;
+  durationMinutes: number;
 };
 
 function startOfLocalDay(date: Date) {
@@ -75,10 +83,15 @@ export default function Home() {
   const [goalCount, setGoalCount] = useState(0);
   const [xpLevel, setXpLevel] = useState<number | null>(null);
   const [todosForTodayStats, setTodosForTodayStats] = useState<DashboardTodo[]>([]);
+  const [studySessionsForFooter, setStudySessionsForFooter] = useState<DashboardStudySession[]>([]);
+  const lastLocalDayRef = useRef(startOfLocalDay(new Date()).getTime());
 
   const todaysTodos = todosForTodayStats.filter((todo) => isSameLocalDay(todo.createdAt, now));
   const todaysDoneCount = todaysTodos.filter((todo) => todo.isDone).length;
   const todaysOpenCount = Math.max(0, todaysTodos.length - todaysDoneCount);
+  const todaysStudySessions = studySessionsForFooter.filter((session) => isSameLocalDay(session.startedAt, now));
+  const todaysStudyMinutes = todaysStudySessions.reduce((sum, session) => sum + session.durationMinutes, 0);
+  const todaysFocusSessions = todaysStudySessions.length;
 
   useEffect(() => {
     let active = true;
@@ -92,10 +105,11 @@ export default function Home() {
 
     const loadCounts = async () => {
       try {
-        const [todosRes, goalsRes, xpRes] = await Promise.all([
+        const [todosRes, goalsRes, xpRes, sessionsRes] = await Promise.all([
           fetch("/api/todos"),
           fetch("/api/goals"),
           fetch("/api/xp"),
+          fetch("/api/study-sessions"),
         ]);
 
         if (todosRes.ok) {
@@ -113,6 +127,13 @@ export default function Home() {
           const xpData = (await xpRes.json()) as { summary?: { level?: number } };
           setXpLevel(xpData.summary?.level ?? null);
         }
+
+        if (sessionsRes.ok) {
+          const sessionsData = (await sessionsRes.json()) as {
+            sessions: DashboardStudySession[];
+          };
+          setStudySessionsForFooter(sessionsData.sessions);
+        }
       } catch (error) {
         console.error("Failed to load counts:", error);
       }
@@ -127,7 +148,16 @@ export default function Home() {
     void loadCounts();
     window.addEventListener("dashboard:changed", refresh);
 
-    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    const timer = window.setInterval(() => {
+      const current = new Date();
+      setNow(current);
+
+      const currentDay = startOfLocalDay(current).getTime();
+      if (currentDay !== lastLocalDayRef.current) {
+        lastLocalDayRef.current = currentDay;
+        refresh();
+      }
+    }, 60_000);
 
     return () => {
       active = false;
@@ -162,6 +192,7 @@ export default function Home() {
 
           <div className="ml-auto flex items-center gap-3">
             <CommandSearch onNavigate={setCurrentPage} />
+            <AuthMenu />
             <ThemeToggle />
           </div>
         </motion.div>
@@ -193,6 +224,14 @@ export default function Home() {
                 >
                   <h1 className="text-3xl font-semibold">Focus session</h1>
                   <p className="text-sm text-muted-foreground">Stay focused and finish what matters</p>
+                </motion.div>
+
+                <motion.div
+                  initial={{ y: 10, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ duration: 0.3, delay: 0.15 }}
+                >
+                  <NotificationPermissionBanner />
                 </motion.div>
 
                 <motion.div
@@ -238,7 +277,7 @@ export default function Home() {
           <div className="grid gap-3 md:grid-cols-4">
             {[
               { label: "Tasks done today", value: todaysDoneCount, sub: `of ${todaysTodos.length}`, Icon: CheckCircle2, color: "text-emerald-500" },
-              { label: "Study time today", value: `${snapshot?.todaySummary.studiedMinutes ?? 0}m`, sub: `${snapshot?.todaySummary.focusSessions ?? 0} sessions`, Icon: Clock, color: "text-blue-500" },
+              { label: "Study time today", value: `${todaysStudyMinutes}m`, sub: `${todaysFocusSessions} sessions`, Icon: Clock, color: "text-blue-500" },
               {
                 label: "Open tasks today",
                 value: todaysOpenCount,

@@ -8,6 +8,8 @@ import { Goal, GoalCadence, GoalGroup, groupLabels, groupOrder } from "./goals";
 import { GoalDetailPage } from "./GoalDetailPage";
 import { GoalProgressCard } from "./GoalProgressCard";
 import { XpPage } from "./XpPage";
+import { notifyGoalReached } from "@/lib/notifications";
+import { DIFFICULTY_XP, type Difficulty } from "@/lib/xp";
 
 export function GoalsPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -17,13 +19,7 @@ export function GoalsPage() {
   const [selectedCadence, setSelectedCadence] = useState<GoalCadence | null>(null);
   const [activeView, setActiveView] = useState<"goals" | "xp">("goals");
 
-  useEffect(() => {
-    loadAll();
-    window.addEventListener("dashboard:changed", loadAll);
-    return () => window.removeEventListener("dashboard:changed", loadAll);
-  }, []);
-
-  const loadAll = async () => {
+  async function loadAll() {
     setIsLoading(true);
     try {
       const [gRes, goalsRes] = await Promise.all([fetch("/api/goal-groups"), fetch("/api/goals")]);
@@ -39,11 +35,48 @@ export function GoalsPage() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadAll();
+    });
+    window.addEventListener("dashboard:changed", loadAll);
+    return () => window.removeEventListener("dashboard:changed", loadAll);
+  }, []);
+
+  const ensureTag = async (tagName: string, goalXp: number) => {
+    const trimmed = tagName.trim();
+    if (!trimmed) return null;
+
+    const response = await fetch("/api/todo-tags", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: trimmed, goalXp }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to save tag.");
+    }
+
+    const payload = (await response.json()) as { tag: TodoTag };
+    setTags((current) => {
+      const existingIndex = current.findIndex((item) => item.id === payload.tag.id);
+      if (existingIndex >= 0) {
+        const next = [...current];
+        next[existingIndex] = payload.tag;
+        return next;
+      }
+      return [payload.tag, ...current];
+    });
+
+    return payload.tag;
   };
 
-  const createGoal = async (group: GoalGroup, title: string, target: number, description: string, unit: string) => {
+  const createGoal = async (group: GoalGroup, title: string, target: number, description: string, unit: string, difficulty: Difficulty) => {
     if (!title || !target) return null;
     try {
+      const tag = await ensureTag(difficulty, DIFFICULTY_XP[difficulty]);
       const res = await fetch("/api/goals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -55,6 +88,7 @@ export function GoalsPage() {
           currentValue: 0,
           unit: unit.trim() || "sessions",
           goalGroupId: group.id,
+          goalTagId: tag?.id ?? null,
         }),
       });
       if (res.ok) {
@@ -71,6 +105,7 @@ export function GoalsPage() {
 
   const handleUpdateProgress = async (id: string, newValue: number) => {
     try {
+      const goal = goals.find((g) => g.id === id);
       const response = await fetch(`/api/goals/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -80,6 +115,11 @@ export function GoalsPage() {
       if (response.ok) {
         setGoals((g) => g.map((x) => (x.id === id ? { ...x, currentValue: newValue } : x)));
         window.dispatchEvent(new Event("dashboard:changed"));
+
+        // Send notification if goal is reached
+        if (goal && newValue >= goal.targetValue && goal.currentValue < goal.targetValue) {
+          notifyGoalReached(goal.title);
+        }
       }
     } catch (error) {
       console.error("Failed to update goal:", error);

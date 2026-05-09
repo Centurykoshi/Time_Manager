@@ -36,6 +36,22 @@ export function getTaskXp(difficulty: Difficulty, completedCountForDifficulty: n
   return Math.max(minXp, xpWithDecrease);
 }
 
+  const GOAL_CHECK_IN_BASE_XP = {
+    WEEKLY: 12,
+    MONTHLY: 18,
+    YEARLY: 24,
+    ALL_TIME: 30,
+  } as const;
+
+  export type GoalCadence = keyof typeof GOAL_CHECK_IN_BASE_XP;
+
+  export function getGoalCheckInXp(targetValue: number, cadence: GoalCadence, tagXp?: number | null) {
+    const safeTarget = Math.max(1, Math.round(targetValue));
+    const cadenceBase = GOAL_CHECK_IN_BASE_XP[cadence] ?? GOAL_CHECK_IN_BASE_XP.WEEKLY;
+    const baseXp = Math.max(1, Math.round(tagXp ?? cadenceBase));
+    return Math.max(5, Math.round((baseXp * 4) / safeTarget));
+  }
+
 export function getSessionXp(durationMinutes: number) {
   const safeMinutes = Math.max(0, Math.floor(durationMinutes));
   return Math.floor(safeMinutes / SESSION_MINUTES_PER_XP);

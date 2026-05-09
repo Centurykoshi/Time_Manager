@@ -41,7 +41,7 @@ export async function GET() {
 
   const goals = await prisma.goal.findMany({
     where: { userId: user.id, isArchived: false },
-    include: { goalGroup: true },
+    include: { goalGroup: true, goalTag: true },
     orderBy: [{ cadence: "asc" }, { createdAt: "desc" }],
   });
 
@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
     currentValue?: number;
     unit?: string;
     goalGroupId?: string | null;
+    goalTagId?: string | null;
   };
 
   const title = body.title?.trim();
@@ -71,6 +72,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "targetValue must be greater than 0." }, { status: 400 });
   }
 
+  if (body.goalTagId) {
+    const tag = await prisma.todoTag.findFirst({ where: { id: body.goalTagId, userId: user.id } });
+    if (!tag) {
+      return NextResponse.json({ error: "Goal tag not found." }, { status: 404 });
+    }
+  }
+
   const goal = await prisma.goal.create({
     data: {
       userId: user.id,
@@ -81,7 +89,9 @@ export async function POST(request: NextRequest) {
       currentValue: Math.max(0, Math.round(body.currentValue ?? 0)),
       unit: body.unit?.trim() || "sessions",
       goalGroupId: body.goalGroupId ?? null,
+      goalTagId: body.goalTagId ?? null,
     },
+    include: { goalGroup: true, goalTag: true },
   });
 
   return NextResponse.json({ goal }, { status: 201 });

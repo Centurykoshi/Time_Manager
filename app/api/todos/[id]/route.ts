@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { addUtcDays, getDashboardUser, toUtcDateOnly } from "@/lib/dashboard";
+import { addLocalDays, getDashboardUser, toLocalDateOnly } from "@/lib/dashboard";
 import { getSessionXp, getTaskXp, MAX_DAILY_XP } from "@/lib/xp";
 
 type Params = {
@@ -47,8 +47,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       });
 
       const now = new Date();
-      const dayStart = toUtcDateOnly(now);
-      const dayEnd = addUtcDays(dayStart, 1);
+      const dayStart = toLocalDateOnly(now);
+      const dayEnd = addLocalDays(dayStart, 1);
 
       const [taskXpToday, sessionsToday] = await Promise.all([
         prisma.todoItem.aggregate({

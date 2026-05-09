@@ -60,6 +60,16 @@ export function addUtcDays(date: Date, days: number) {
   return toUtcDateOnly(next);
 }
 
+export function toLocalDateOnly(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+export function addLocalDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return toLocalDateOnly(next);
+}
+
 export function startOfUtcWeek(date: Date) {
   const day = toUtcDateOnly(date);
   const offset = (day.getUTCDay() + 6) % 7;

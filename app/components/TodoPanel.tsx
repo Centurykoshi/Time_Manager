@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { MoreVertical } from "lucide-react";
+import { toast } from "sonner";
 
 type Difficulty = "EASY" | "MEDIUM" | "HARD" | "BOSS";
 
@@ -335,6 +336,15 @@ export function TodoPanel() {
       
       // Trigger refresh to update XP display and other pages
       window.dispatchEvent(new Event("dashboard:changed"));
+
+      // Show an in-app toast when todo is marked as complete
+      if (nextDone) {
+        toast.custom((t) => (
+          <div className="rounded-lg border border-primary/60 bg-primary/10 px-4 py-3 text-sm font-medium text-primary shadow-lg">
+            ✓ Completed: {target.text}
+          </div>
+        ));
+      }
 
       setPendingSaves((prev) => {
         const next = new Map(prev);

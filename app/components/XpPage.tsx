@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Award, CalendarDays, Flame, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "./ui/button";
+import { XpTasksModal } from "./XpTasksModal";
+import { XpAllTimeModal } from "./XpAllTimeModal";
 
 type XpResponse = {
   summary: {
@@ -27,21 +30,48 @@ type XpResponse = {
 const DAILY_XP_CAP = 120;
 
 function formatDateLabel(value: string) {
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(value));
+  try {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return "Unknown";
+    return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
+  } catch {
+    return "Unknown";
+  }
 }
 
-function formatFullDateWithDay(value: string) {
-  return new Intl.DateTimeFormat("en", { weekday: "short", month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
+function formatFullDateWithDay(value: string | null | undefined) {
+  try {
+    if (!value) return "Today";
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return "Unknown";
+    return new Intl.DateTimeFormat("en", { weekday: "short", month: "short", day: "numeric", year: "numeric" }).format(date);
+  } catch {
+    return "Unknown";
+  }
 }
 
-function dayFromKey(dayKey: string) {
-  return new Date(`${dayKey}T00:00:00.000Z`);
+function toLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function dayFromKey(dayKey: string): Date {
+  const [year, month, day] = dayKey.split("-").map(Number);
+  return new Date(year, month - 1, day);
 }
 
 export function XpPage() {
   const [data, setData] = useState<XpResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showAllDays, setShowAllDays] = useState(false);
+  const [showTasksModal, setShowTasksModal] = useState(false);
+  const [showAllTimeModal, setShowAllTimeModal] = useState(false);
+  const viewAllButtonProps = {
+    variant: "default" as const,
+    size: "sm" as const,
+    className: "shrink-0",
+  };
 
   useEffect(() => {
     let active = true;
@@ -70,30 +100,23 @@ export function XpPage() {
   }, []);
 
   const summary = data?.summary;
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = toLocalDateKey(new Date());
   const sortedDailyXp = useMemo(
     () => [...(data?.dailyXp ?? [])].sort((a, b) => a.day.localeCompare(b.day)),
     [data?.dailyXp],
   );
 
   const visibleDailyXp = useMemo(() => {
-    if (showAllDays) return sortedDailyXp;
     if (sortedDailyXp.length === 0) return [];
 
-    let anchorIndex = sortedDailyXp.findIndex((entry) => entry.day === todayKey);
-    if (anchorIndex === -1) {
-      const firstAfterToday = sortedDailyXp.findIndex((entry) => entry.day > todayKey);
-      anchorIndex = firstAfterToday === -1 ? sortedDailyXp.length - 1 : Math.max(0, firstAfterToday - 1);
-    }
+    const todayIndex = sortedDailyXp.findIndex((entry) => entry.day === todayKey);
+    if (todayIndex === -1) return sortedDailyXp.slice(-7);
 
-    let start = Math.max(0, anchorIndex - 2);
-    let end = Math.min(sortedDailyXp.length, start + 7);
-    if (end - start < 7) {
-      start = Math.max(0, end - 7);
-    }
+    const start = Math.max(0, todayIndex - 1);
+    const end = Math.min(sortedDailyXp.length, todayIndex + 6);
 
     return sortedDailyXp.slice(start, end);
-  }, [showAllDays, sortedDailyXp, todayKey]);
+  }, [sortedDailyXp, todayKey]);
 
   const todayXp = sortedDailyXp.find((day) => day.day === todayKey)?.xp ?? 0;
   const allTimeDailyXp = useMemo(
@@ -177,8 +200,8 @@ export function XpPage() {
       <div className="grid gap-4 xl:grid-cols-[1fr_0.95fr]">
         <div className="rounded-2xl border border-border/60 bg-muted/15 p-4">
           <div>
-            <h3 className="text-lg font-semibold">Your all xps for 6 days</h3>
-            <p className="text-sm text-muted-foreground">Daily XP earnings over the last 6 days.</p>
+            <h3 className="text-lg font-semibold">Your XP for 7 days</h3>
+            <p className="text-sm text-muted-foreground">1 previous day, today, and the next 5 days.</p>
           </div>
 
           <div className="mt-4 space-y-3">
@@ -187,60 +210,85 @@ export function XpPage() {
               const isToday = dayOffset === 0;
 
               return (
-              <div
-                key={day.day}
-                className={cn(
-                  "rounded-xl bg-background/70 p-3",
-                  isToday && "bg-linear-to-r from-amber-500/15 via-amber-400/8 to-transparent",
-                )}
-              >
-                <div className="flex items-center justify-between text-sm">
-                  <div>
-                    <p className="font-medium">{day.label}</p>
-                    <p className="text-xs text-muted-foreground">{formatDateLabel(day.day)} • {day.tasksCompleted} tasks</p>
+                <div
+                  key={day.day}
+                  className={cn(
+                    "rounded-xl bg-background/70 p-3",
+                    isToday && "bg-linear-to-r from-amber-500/15 via-amber-400/8 to-transparent",
+                  )}
+                >
+                  <div className="flex items-center justify-between text-sm">
+                    <div>
+                      <p className="font-medium">{day.label}</p>
+                      <p className="text-xs text-muted-foreground">{formatDateLabel(day.day)} • {day.tasksCompleted} tasks</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-semibold text-amber-500">{day.xp} XP</p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-lg font-semibold text-amber-500">{day.xp} XP</p>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-secondary/60">
+                    <div className={cn("h-full rounded-full bg-primary transition-all", day.xp === 0 ? "opacity-20" : "opacity-100")} style={{ width: `${Math.min(100, (day.xp / DAILY_XP_CAP) * 100)}%` }} />
                   </div>
                 </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-secondary/60">
-                  <div className={cn("h-full rounded-full bg-primary transition-all", day.xp === 0 ? "opacity-20" : "opacity-100")} style={{ width: `${Math.min(100, (day.xp / DAILY_XP_CAP) * 100)}%` }} />
-                </div>
-              </div>
               );
             })}
           </div>
         </div>
 
         <div className="grid gap-4">
-          <div className="rounded-2xl border border-border/60 bg-muted/15 p-4">
-            <h3 className="text-lg font-semibold">All task with XP</h3>
-            <p className="text-sm text-muted-foreground">All-time completed tasks and earned XP.</p>
-
-            <div className="mt-4 max-h-90 space-y-3 overflow-auto pr-1">
-              {(data?.recentTasks ?? []).map((task) => (
-                <div key={task.id} className="rounded-xl border border-border/50 bg-background/70 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{task.title}</p>
-                      <p className="text-xs text-muted-foreground">{task.difficulty} • {formatFullDateWithDay(task.completedAt ?? new Date().toISOString())}</p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-lg font-semibold text-amber-500">+{task.xpEarned}</p>
-                      <p className="text-xs text-muted-foreground">XP</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {loading ? <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">Loading task XP history...</div> : null}
-              {!loading && (data?.recentTasks.length ?? 0) === 0 ? <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">No tasks completed with XP yet.</div> : null}
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold">All tasks with XP</h3>
+              <p className="text-sm text-muted-foreground">All-time completed tasks and earned XP.</p>
             </div>
+            <Button
+              onClick={() => setShowTasksModal(true)}
+              {...viewAllButtonProps}
+            >
+              View all
+            </Button>
           </div>
 
+          <div className="max-h-80 space-y-3 overflow-auto pr-1">
+            {(data?.recentTasks ?? []).slice(0, 5).map((task) => (
+              <div key={task.id} className="rounded-xl border border-border/50 bg-background/70 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{task.title}</p>
+                    <p className="text-xs text-muted-foreground">{task.difficulty} • {formatFullDateWithDay(task.completedAt ?? new Date().toISOString())}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-lg font-semibold text-amber-500">+{task.xpEarned}</p>
+                    <p className="text-xs text-muted-foreground">XP</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {loading ? <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">Loading task XP history...</div> : null}
+            {!loading && (data?.recentTasks.length ?? 0) === 0 ? <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">No tasks completed with XP yet.</div> : null}
+          </div>
+
+          <XpTasksModal
+            isOpen={showTasksModal}
+            onClose={() => setShowTasksModal(false)}
+            tasks={data?.recentTasks ?? []}
+            loading={loading}
+            formatFullDateWithDay={formatFullDateWithDay}
+          />
           <div className="rounded-2xl border border-border/60 bg-muted/15 p-4">
-            <h3 className="text-lg font-semibold">All time XP</h3>
-            <p className="text-sm text-muted-foreground">Every tracked day with date, day name, and earned XP.</p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold">All time XP</h3>
+                <p className="text-sm text-muted-foreground">Every tracked day with date, day name, and earned XP.</p>
+              </div>
+              <Button
+                onClick={() => setShowAllTimeModal(true)}
+                {...viewAllButtonProps}
+              >
+                View all
+              </Button>
+            </div>
 
             <div className="mt-4 max-h-80 space-y-3 overflow-auto pr-1">
               {allTimeDailyXp.map((day) => (
@@ -259,6 +307,14 @@ export function XpPage() {
               {!loading && allTimeDailyXp.length === 0 ? <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">No daily XP records yet.</div> : null}
             </div>
           </div>
+
+          <XpAllTimeModal
+            isOpen={showAllTimeModal}
+            onClose={() => setShowAllTimeModal(false)}
+            entries={allTimeDailyXp}
+            loading={loading}
+            formatFullDateWithDay={formatFullDateWithDay}
+          />
         </div>
       </div>
     </motion.section>

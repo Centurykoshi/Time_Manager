@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { addUtcDays, formatDayLabel, getDashboardUser, toUtcDateOnly } from "@/lib/dashboard";
+import { addLocalDays, formatDayLabel, getDashboardUser, toLocalDateOnly } from "@/lib/dashboard";
 import { getSessionXp, getXpLevel, MAX_DAILY_XP } from "@/lib/xp";
+
+function toLocalDateKey(date: Date) {
+  const d = toLocalDateOnly(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 export async function GET() {
   const user = await getDashboardUser();
@@ -39,7 +47,7 @@ export async function GET() {
 
   for (const todo of completedTodos) {
     if (!todo.completedAt) continue;
-    const dayKey = toUtcDateOnly(new Date(todo.completedAt)).toISOString().slice(0, 10);
+    const dayKey = toLocalDateKey(new Date(todo.completedAt));
     const entry = xpByDay.get(dayKey) ?? { taskXp: 0, studyXp: 0, taskCount: 0 };
     entry.taskXp += todo.xpEarned;
     entry.taskCount += 1;
@@ -50,7 +58,7 @@ export async function GET() {
     const sessionXp = getSessionXp(session.durationMinutes);
     if (sessionXp <= 0) continue;
 
-    const dayKey = toUtcDateOnly(new Date(session.startedAt)).toISOString().slice(0, 10);
+    const dayKey = toLocalDateKey(new Date(session.startedAt));
     const entry = xpByDay.get(dayKey) ?? { taskXp: 0, studyXp: 0, taskCount: 0 };
     entry.studyXp += sessionXp;
     xpByDay.set(dayKey, entry);
@@ -63,19 +71,22 @@ export async function GET() {
   const xpLevel = getXpLevel(totalXp);
 
   // Build a full daily series so the XP page can switch between 7-day and all-day views.
-  const today = toUtcDateOnly(new Date());
+  const today = toLocalDateOnly(new Date());
   const dayKeys = Array.from(xpByDay.keys()).sort((a, b) => a.localeCompare(b));
-  const firstTrackedDay = dayKeys.length > 0 ? new Date(`${dayKeys[0]}T00:00:00.000Z`) : addUtcDays(today, -2);
-  const lastTrackedDay = addUtcDays(today, 4);
+  const firstTrackedDay = dayKeys.length > 0 ? new Date(dayKeys[0]) : addLocalDays(today, -2);
+  const lastTrackedDay = addLocalDays(today, 5);
   const totalDays = Math.max(1, Math.floor((lastTrackedDay.getTime() - firstTrackedDay.getTime()) / 86400000) + 1);
 
-  const dailyXp = Array.from({ length: totalDays }, (_, index) => addUtcDays(firstTrackedDay, index)).map((day) => {
-    const key = day.toISOString().slice(0, 10);
+  const dailyXp = Array.from({ length: totalDays }, (_, index) => addLocalDays(firstTrackedDay, index)).map((day) => {
+    const key = toLocalDateKey(day);
     const entry = xpByDay.get(key);
+    const taskXp = entry?.taskXp ?? 0;
+    const studyXp = entry?.studyXp ?? 0;
+    const totalDaily = Math.min(MAX_DAILY_XP, taskXp + studyXp);
     return {
       day: key,
       label: formatDayLabel(day),
-      xp: Math.min(MAX_DAILY_XP, entry?.taskXp ?? 0),
+      xp: totalDaily,
       tasksCompleted: entry?.taskCount ?? 0,
     };
   });
