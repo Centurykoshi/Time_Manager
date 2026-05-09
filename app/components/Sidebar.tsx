@@ -54,7 +54,7 @@ export function Sidebar({ activePage, onPageChange, todoCount, goalCount, xpCoun
           label="Experience"
           active={activePage === "xp"}
           onClick={() => onPageChange("xp")}
-          badge={xpCount}
+          badge={xpCount !== undefined ? `Lv ${xpCount}` : undefined}
         />
       </nav>
     </motion.aside>
@@ -72,7 +72,7 @@ function NavButton({
   label: string;
   active: boolean;
   onClick: () => void;
-  badge?: number;
+  badge?: number | string;
 }) {
   return (
     <button

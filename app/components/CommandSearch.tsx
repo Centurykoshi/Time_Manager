@@ -36,6 +36,12 @@ export function CommandSearch({ onNavigate }: CommandSearchProps) {
   }, []);
 
   useEffect(() => {
+    if (!open) {
+      setQuery("");
+    }
+  }, [open]);
+
+  useEffect(() => {
     if (!open) return;
 
     const load = async () => {
@@ -60,9 +66,32 @@ export function CommandSearch({ onNavigate }: CommandSearchProps) {
     void load();
   }, [open]);
 
+  const normalizeText = (value?: string | null) =>
+    (value ?? "")
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const getMatchScore = (queryValue: string, haystack: string) => {
+    if (!queryValue || !haystack) return 0;
+    if (haystack === queryValue) return 120;
+    if (haystack.startsWith(queryValue)) return 100;
+    if (haystack.includes(` ${queryValue}`)) return 90;
+    if (haystack.includes(queryValue)) return 75;
+
+    const queryTokens = queryValue.split(" ");
+    let tokenHits = 0;
+    for (const token of queryTokens) {
+      if (token.length > 1 && haystack.includes(token)) tokenHits += 1;
+    }
+
+    return tokenHits > 0 ? tokenHits * 20 : 0;
+  };
+
   const searchResults = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    const matches = (value?: string | null) => Boolean(value && value.toLowerCase().includes(normalized));
+    const normalized = normalizeText(query);
 
     const pageActions = [
       { id: "main", label: "Open Main", icon: Home, page: "main" as SidebarPage },
@@ -74,12 +103,64 @@ export function CommandSearch({ onNavigate }: CommandSearchProps) {
       return { pageActions, todos: todos.slice(0, 5), goals: goals.slice(0, 5) };
     }
 
+    const rankedTodos = todos
+      .map((todo) => {
+        const score = Math.max(
+          getMatchScore(normalized, normalizeText(todo.title)),
+          getMatchScore(normalized, normalizeText(todo.description)),
+        );
+
+        return { todo, score };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((entry) => entry.todo)
+      .slice(0, 8);
+
+    const rankedGoals = goals
+      .map((goal) => {
+        const score = Math.max(
+          getMatchScore(normalized, normalizeText(goal.title)),
+          getMatchScore(normalized, normalizeText(goal.description)),
+          getMatchScore(normalized, normalizeText(goal.cadence)),
+        );
+
+        return { goal, score };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((entry) => entry.goal)
+      .slice(0, 8);
+
     return {
       pageActions: pageActions.filter((item) => item.label.toLowerCase().includes(normalized)),
-      todos: todos.filter((todo) => matches(todo.title) || matches(todo.description)).slice(0, 8),
-      goals: goals.filter((goal) => matches(goal.title) || matches(goal.description) || matches(goal.cadence)).slice(0, 8),
+      todos: rankedTodos,
+      goals: rankedGoals,
     };
   }, [goals, query, todos]);
+
+  const hasResults =
+    searchResults.pageActions.length > 0 || searchResults.todos.length > 0 || searchResults.goals.length > 0;
+
+  const openFirstResult = () => {
+    const firstPage = searchResults.pageActions[0];
+    if (firstPage) {
+      onNavigate(firstPage.page);
+      setOpen(false);
+      return;
+    }
+
+    if (searchResults.todos.length > 0) {
+      onNavigate("todos");
+      setOpen(false);
+      return;
+    }
+
+    if (searchResults.goals.length > 0) {
+      onNavigate("goals");
+      setOpen(false);
+    }
+  };
 
   return (
     <>
@@ -90,18 +171,33 @@ export function CommandSearch({ onNavigate }: CommandSearchProps) {
       </Button>
 
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="top" className="inset-auto right-auto bottom-auto left-1/2 top-1/2 mx-auto w-[min(92vw,48rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border/60 p-0 shadow-2xl" showCloseButton={false}>
+        <SheetContent
+          side="top"
+          className="fixed! inset-auto! left-1/2! top-1/2! right-auto! bottom-auto! h-[70vh]! w-[min(92vw,48rem)]! max-w-none! -translate-x-1/2! -translate-y-1/2! overflow-hidden rounded-2xl border border-border/60 p-0 shadow-2xl"
+          showCloseButton={false}
+        >
           <SheetHeader className="border-b border-border/60 px-4 py-4">
             <SheetTitle>Search workspace</SheetTitle>
             <SheetDescription>Search todos, goals, and jump between tabs instantly.</SheetDescription>
           </SheetHeader>
 
-          <div className="max-h-[70vh] space-y-4 overflow-auto p-4">
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search todos, goals, or page names" autoFocus />
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && hasResults) {
+                  event.preventDefault();
+                  openFirstResult();
+                }
+              }}
+              placeholder="Search todos, goals, or page names"
+              autoFocus
+            />
 
             <div className="space-y-4">
               <SearchGroup title="Pages">
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-center justify-center gap-2">
                   {searchResults.pageActions.map((item) => {
                     const Icon = item.icon;
                     return (
@@ -119,7 +215,7 @@ export function CommandSearch({ onNavigate }: CommandSearchProps) {
                 {!isLoading && searchResults.todos.length === 0 ? <SearchEmpty label="No matching todos." /> : null}
                 <div className="space-y-2">
                   {searchResults.todos.map((todo) => (
-                    <button key={todo.id} onClick={() => { onNavigate("todos"); setOpen(false); }} className="flex w-full items-start justify-between gap-3 rounded-xl border border-border/60 bg-card/70 px-3 py-3 text-left transition-colors hover:bg-card">
+                    <button key={todo.id} onClick={() => { onNavigate("todos"); setOpen(false); }} className="flex w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/70 px-3 py-3 text-left transition-colors hover:bg-card">
                       <div className="min-w-0">
                         <div className="font-medium">{todo.title}</div>
                         {todo.description ? <div className="mt-1 text-sm text-muted-foreground">{todo.description}</div> : null}
@@ -135,7 +231,7 @@ export function CommandSearch({ onNavigate }: CommandSearchProps) {
                 {!isLoading && searchResults.goals.length === 0 ? <SearchEmpty label="No matching goals." /> : null}
                 <div className="space-y-2">
                   {searchResults.goals.map((goal) => (
-                    <button key={goal.id} onClick={() => { onNavigate("goals"); setOpen(false); }} className="flex w-full items-start justify-between gap-3 rounded-xl border border-border/60 bg-card/70 px-3 py-3 text-left transition-colors hover:bg-card">
+                    <button key={goal.id} onClick={() => { onNavigate("goals"); setOpen(false); }} className="flex w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/70 px-3 py-3 text-left transition-colors hover:bg-card">
                       <div className="min-w-0">
                         <div className="font-medium">{goal.title}</div>
                         {goal.description ? <div className="mt-1 text-sm text-muted-foreground">{goal.description}</div> : null}
@@ -163,5 +259,5 @@ function SearchGroup({ title, children }: { title: string; children: React.React
 }
 
 function SearchEmpty({ label }: { label: string }) {
-  return <div className="rounded-xl border border-dashed border-border/60 px-3 py-4 text-sm text-muted-foreground">{label}</div>;
+  return <div className="flex items-center justify-center rounded-xl border border-dashed border-border/60 px-3 py-4 text-sm text-muted-foreground">{label}</div>;
 }

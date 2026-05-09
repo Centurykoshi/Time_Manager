@@ -1,5 +1,6 @@
-export const XP_PER_MINUTE = 10;
 export const XP_PER_LEVEL = 500;
+export const SESSION_MINUTES_PER_XP = 10;
+export const MAX_DAILY_XP = 120;
 
 // Task difficulty XP rewards (base values)
 export const DIFFICULTY_XP = {
@@ -36,7 +37,8 @@ export function getTaskXp(difficulty: Difficulty, completedCountForDifficulty: n
 }
 
 export function getSessionXp(durationMinutes: number) {
-  return Math.max(10, Math.round(Math.max(1, durationMinutes) * XP_PER_MINUTE));
+  const safeMinutes = Math.max(0, Math.floor(durationMinutes));
+  return Math.floor(safeMinutes / SESSION_MINUTES_PER_XP);
 }
 
 export function getXpLevel(totalXp: number) {

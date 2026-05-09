@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getDashboardUser } from "@/lib/dashboard";
-import { getTaskXp } from "@/lib/xp";
+import { addUtcDays, getDashboardUser, toUtcDateOnly } from "@/lib/dashboard";
+import { getSessionXp, getTaskXp, MAX_DAILY_XP } from "@/lib/xp";
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -45,7 +45,40 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       const completedCount = await prisma.todoItem.count({
         where: { userId: user.id, difficulty, isDone: true }
       });
-      updateData.xpEarned = getTaskXp(difficulty, completedCount);
+
+      const now = new Date();
+      const dayStart = toUtcDateOnly(now);
+      const dayEnd = addUtcDays(dayStart, 1);
+
+      const [taskXpToday, sessionsToday] = await Promise.all([
+        prisma.todoItem.aggregate({
+          where: {
+            userId: user.id,
+            isDone: true,
+            completedAt: {
+              gte: dayStart,
+              lt: dayEnd,
+            },
+          },
+          _sum: { xpEarned: true },
+        }),
+        prisma.studySession.findMany({
+          where: {
+            userId: user.id,
+            startedAt: {
+              gte: dayStart,
+              lt: dayEnd,
+            },
+          },
+          select: { durationMinutes: true },
+        }),
+      ]);
+
+      const sessionXpToday = sessionsToday.reduce((sum, session) => sum + getSessionXp(session.durationMinutes), 0);
+      const consumedToday = (taskXpToday._sum.xpEarned ?? 0) + sessionXpToday;
+      const remainingToday = Math.max(0, MAX_DAILY_XP - consumedToday);
+      const requestedTaskXp = getTaskXp(difficulty, completedCount);
+      updateData.xpEarned = Math.min(requestedTaskXp, remainingToday);
     }
     // If marking as not done, remove XP
     else if (body.isDone === false && currentTodo && currentTodo.isDone) {

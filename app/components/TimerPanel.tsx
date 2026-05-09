@@ -546,6 +546,9 @@ export function TimerPanel() {
                     height: "0",
                     width: "0",
                     videoId: youtubeId,
+                    playerVars: {
+                      quality: "small", // 240p quality
+                    },
                     events: {
                       onReady: (event: { target: YTPlayer }) => {
                         shouldAudioPlayRef.current = true;

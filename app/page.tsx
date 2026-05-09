@@ -73,6 +73,7 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState<SidebarPage>("main");
   const [todoCount, setTodoCount] = useState(0);
   const [goalCount, setGoalCount] = useState(0);
+  const [xpLevel, setXpLevel] = useState<number | null>(null);
   const [todosForTodayStats, setTodosForTodayStats] = useState<DashboardTodo[]>([]);
 
   const todaysTodos = todosForTodayStats.filter((todo) => isSameLocalDay(todo.createdAt, now));
@@ -91,9 +92,10 @@ export default function Home() {
 
     const loadCounts = async () => {
       try {
-        const [todosRes, goalsRes] = await Promise.all([
+        const [todosRes, goalsRes, xpRes] = await Promise.all([
           fetch("/api/todos"),
           fetch("/api/goals"),
+          fetch("/api/xp"),
         ]);
 
         if (todosRes.ok) {
@@ -105,6 +107,11 @@ export default function Home() {
         if (goalsRes.ok) {
           const goalsData = (await goalsRes.json()) as { goals: Array<{ id: string }> };
           setGoalCount(goalsData.goals.length);
+        }
+
+        if (xpRes.ok) {
+          const xpData = (await xpRes.json()) as { summary?: { level?: number } };
+          setXpLevel(xpData.summary?.level ?? null);
         }
       } catch (error) {
         console.error("Failed to load counts:", error);
@@ -166,6 +173,7 @@ export default function Home() {
           onPageChange={setCurrentPage}
           todoCount={todoCount}
           goalCount={goalCount}
+          xpCount={xpLevel ?? undefined}
         />
         <main className="flex-1 overflow-auto px-8 py-8">
           <div className="mx-auto max-w-4xl">

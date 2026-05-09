@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { addUtcDays, formatDayLabel, getDashboardUser, startOfUtcWeek, toUtcDateOnly } from "@/lib/dashboard";
-import { getXpLevel } from "@/lib/xp";
+import { addUtcDays, formatDayLabel, getDashboardUser, toUtcDateOnly } from "@/lib/dashboard";
+import { getSessionXp, getXpLevel, MAX_DAILY_XP } from "@/lib/xp";
 
 export async function GET() {
   const user = await getDashboardUser();
@@ -23,32 +23,60 @@ export async function GET() {
     },
   });
 
-  const totalXp = completedTodos.reduce((sum, todo) => sum + todo.xpEarned, 0);
-  const xpLevel = getXpLevel(totalXp);
+  const studySessions = await prisma.studySession.findMany({
+    where: {
+      userId: user.id,
+      durationMinutes: { gt: 0 },
+    },
+    orderBy: { startedAt: "desc" },
+    select: {
+      durationMinutes: true,
+      startedAt: true,
+    },
+  });
 
-  // Calculate daily XP breakdown
-  const today = toUtcDateOnly(new Date());
-  const weekStart = startOfUtcWeek(today);
-  const recentDays = Array.from({ length: 14 }, (_, index) => addUtcDays(weekStart, index - 7));
-  const todosByDay = new Map<string, { xp: number; count: number }>();
+  const xpByDay = new Map<string, { taskXp: number; studyXp: number; taskCount: number }>();
 
   for (const todo of completedTodos) {
     if (!todo.completedAt) continue;
     const dayKey = toUtcDateOnly(new Date(todo.completedAt)).toISOString().slice(0, 10);
-    const current = todosByDay.get(dayKey) ?? { xp: 0, count: 0 };
-    current.xp += todo.xpEarned;
-    current.count += 1;
-    todosByDay.set(dayKey, current);
+    const entry = xpByDay.get(dayKey) ?? { taskXp: 0, studyXp: 0, taskCount: 0 };
+    entry.taskXp += todo.xpEarned;
+    entry.taskCount += 1;
+    xpByDay.set(dayKey, entry);
   }
 
-  const dailyXp = recentDays.map((day) => {
+  for (const session of studySessions) {
+    const sessionXp = getSessionXp(session.durationMinutes);
+    if (sessionXp <= 0) continue;
+
+    const dayKey = toUtcDateOnly(new Date(session.startedAt)).toISOString().slice(0, 10);
+    const entry = xpByDay.get(dayKey) ?? { taskXp: 0, studyXp: 0, taskCount: 0 };
+    entry.studyXp += sessionXp;
+    xpByDay.set(dayKey, entry);
+  }
+
+  const totalXp = Array.from(xpByDay.values()).reduce(
+    (sum, entry) => sum + Math.min(MAX_DAILY_XP, entry.taskXp + entry.studyXp),
+    0,
+  );
+  const xpLevel = getXpLevel(totalXp);
+
+  // Build a full daily series so the XP page can switch between 7-day and all-day views.
+  const today = toUtcDateOnly(new Date());
+  const dayKeys = Array.from(xpByDay.keys()).sort((a, b) => a.localeCompare(b));
+  const firstTrackedDay = dayKeys.length > 0 ? new Date(`${dayKeys[0]}T00:00:00.000Z`) : addUtcDays(today, -2);
+  const lastTrackedDay = addUtcDays(today, 4);
+  const totalDays = Math.max(1, Math.floor((lastTrackedDay.getTime() - firstTrackedDay.getTime()) / 86400000) + 1);
+
+  const dailyXp = Array.from({ length: totalDays }, (_, index) => addUtcDays(firstTrackedDay, index)).map((day) => {
     const key = day.toISOString().slice(0, 10);
-    const entry = todosByDay.get(key);
+    const entry = xpByDay.get(key);
     return {
       day: key,
       label: formatDayLabel(day),
-      xp: entry?.xp ?? 0,
-      tasksCompleted: entry?.count ?? 0,
+      xp: Math.min(MAX_DAILY_XP, entry?.taskXp ?? 0),
+      tasksCompleted: entry?.taskCount ?? 0,
     };
   });
 
@@ -62,6 +90,6 @@ export async function GET() {
       progress: xpLevel.progress,
     },
     dailyXp,
-    recentTasks: completedTodos.slice(0, 24),
+    recentTasks: completedTodos,
   });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Award, CalendarDays, Flame, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -24,13 +24,24 @@ type XpResponse = {
   }>;
 };
 
+const DAILY_XP_CAP = 120;
+
 function formatDateLabel(value: string) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(value));
+}
+
+function formatFullDateWithDay(value: string) {
+  return new Intl.DateTimeFormat("en", { weekday: "short", month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
+}
+
+function dayFromKey(dayKey: string) {
+  return new Date(`${dayKey}T00:00:00.000Z`);
 }
 
 export function XpPage() {
   const [data, setData] = useState<XpResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showAllDays, setShowAllDays] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -59,9 +70,39 @@ export function XpPage() {
   }, []);
 
   const summary = data?.summary;
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const sortedDailyXp = useMemo(
+    () => [...(data?.dailyXp ?? [])].sort((a, b) => a.day.localeCompare(b.day)),
+    [data?.dailyXp],
+  );
+
+  const visibleDailyXp = useMemo(() => {
+    if (showAllDays) return sortedDailyXp;
+    if (sortedDailyXp.length === 0) return [];
+
+    let anchorIndex = sortedDailyXp.findIndex((entry) => entry.day === todayKey);
+    if (anchorIndex === -1) {
+      const firstAfterToday = sortedDailyXp.findIndex((entry) => entry.day > todayKey);
+      anchorIndex = firstAfterToday === -1 ? sortedDailyXp.length - 1 : Math.max(0, firstAfterToday - 1);
+    }
+
+    let start = Math.max(0, anchorIndex - 2);
+    let end = Math.min(sortedDailyXp.length, start + 7);
+    if (end - start < 7) {
+      start = Math.max(0, end - 7);
+    }
+
+    return sortedDailyXp.slice(start, end);
+  }, [showAllDays, sortedDailyXp, todayKey]);
+
+  const todayXp = sortedDailyXp.find((day) => day.day === todayKey)?.xp ?? 0;
+  const allTimeDailyXp = useMemo(
+    () => sortedDailyXp.filter((entry) => entry.day <= todayKey).reverse(),
+    [sortedDailyXp, todayKey],
+  );
 
   return (
-    <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="space-y-6">
+    <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="space-y-6 xl:-ml-4">
       <div>
         <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">XP tracker</p>
         <h2 className="mt-1 text-3xl font-semibold">All experience points</h2>
@@ -89,13 +130,25 @@ export function XpPage() {
             </div>
           </div>
 
-          <div className="mt-5 space-y-2">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Level progress</span>
-              <span>{summary?.progress ?? 0}%</span>
+          <div className="mt-4 space-y-3">
+            <div className="rounded-xl bg-background/45 px-3 py-2">
+              <div className="flex items-center justify-between text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                <span>Daily XP</span>
+                <span>{todayXp} / {DAILY_XP_CAP}</span>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary/60">
+                <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${Math.min(100, (todayXp / DAILY_XP_CAP) * 100)}%` }} />
+              </div>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-secondary/60">
-              <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${summary?.progress ?? 0}%` }} />
+
+            <div className="rounded-xl bg-background/45 px-3 py-2">
+              <div className="flex items-center justify-between text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                <span>Today&apos;s level progress</span>
+                <span>{summary?.progress ?? 0}%</span>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary/60">
+                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${summary?.progress ?? 0}%` }} />
+              </div>
             </div>
           </div>
         </div>
@@ -121,19 +174,26 @@ export function XpPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+      <div className="grid gap-4 xl:grid-cols-[1fr_0.95fr]">
         <div className="rounded-2xl border border-border/60 bg-muted/15 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-semibold">XP by day</h3>
-              <p className="text-sm text-muted-foreground">A quick look at recent point accumulation.</p>
-            </div>
-            <span className="rounded-full bg-background/70 px-3 py-1 text-xs text-muted-foreground">{loading ? "Loading..." : "Live"}</span>
+          <div>
+            <h3 className="text-lg font-semibold">Your all xps for 6 days</h3>
+            <p className="text-sm text-muted-foreground">Daily XP earnings over the last 6 days.</p>
           </div>
 
           <div className="mt-4 space-y-3">
-            {(data?.dailyXp ?? []).map((day) => (
-              <div key={day.day} className="rounded-xl border border-border/50 bg-background/70 p-3">
+            {visibleDailyXp.map((day) => {
+              const dayOffset = Math.round((dayFromKey(day.day).getTime() - dayFromKey(todayKey).getTime()) / 86400000);
+              const isToday = dayOffset === 0;
+
+              return (
+              <div
+                key={day.day}
+                className={cn(
+                  "rounded-xl bg-background/70 p-3",
+                  isToday && "bg-linear-to-r from-amber-500/15 via-amber-400/8 to-transparent",
+                )}
+              >
                 <div className="flex items-center justify-between text-sm">
                   <div>
                     <p className="font-medium">{day.label}</p>
@@ -144,35 +204,60 @@ export function XpPage() {
                   </div>
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-secondary/60">
-                  <div className={cn("h-full rounded-full bg-primary transition-all", day.xp === 0 ? "opacity-20" : "opacity-100")} style={{ width: `${Math.min(100, (day.xp / 60) * 100)}%` }} />
+                  <div className={cn("h-full rounded-full bg-primary transition-all", day.xp === 0 ? "opacity-20" : "opacity-100")} style={{ width: `${Math.min(100, (day.xp / DAILY_XP_CAP) * 100)}%` }} />
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        <div className="rounded-2xl border border-border/60 bg-muted/15 p-4">
-          <h3 className="text-lg font-semibold">Recent completed tasks</h3>
-          <p className="text-sm text-muted-foreground">Your latest task completions and XP rewards.</p>
+        <div className="grid gap-4">
+          <div className="rounded-2xl border border-border/60 bg-muted/15 p-4">
+            <h3 className="text-lg font-semibold">All task with XP</h3>
+            <p className="text-sm text-muted-foreground">All-time completed tasks and earned XP.</p>
 
-          <div className="mt-4 space-y-3">
-            {(data?.recentTasks ?? []).map((task) => (
-              <div key={task.id} className="rounded-xl border border-border/50 bg-background/70 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{task.title}</p>
-                    <p className="text-xs text-muted-foreground">{task.difficulty} • {formatDateLabel(task.completedAt ?? new Date().toISOString())}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-lg font-semibold text-amber-500">+{task.xpEarned}</p>
-                    <p className="text-xs text-muted-foreground">XP</p>
+            <div className="mt-4 max-h-90 space-y-3 overflow-auto pr-1">
+              {(data?.recentTasks ?? []).map((task) => (
+                <div key={task.id} className="rounded-xl border border-border/50 bg-background/70 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{task.title}</p>
+                      <p className="text-xs text-muted-foreground">{task.difficulty} • {formatFullDateWithDay(task.completedAt ?? new Date().toISOString())}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-lg font-semibold text-amber-500">+{task.xpEarned}</p>
+                      <p className="text-xs text-muted-foreground">XP</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
 
-            {loading ? <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">Loading XP history...</div> : null}
-            {!loading && (data?.recentTasks.length ?? 0) === 0 ? <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">No tasks completed yet. Finish a task to start earning XP.</div> : null}
+              {loading ? <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">Loading task XP history...</div> : null}
+              {!loading && (data?.recentTasks.length ?? 0) === 0 ? <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">No tasks completed with XP yet.</div> : null}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border/60 bg-muted/15 p-4">
+            <h3 className="text-lg font-semibold">All time XP</h3>
+            <p className="text-sm text-muted-foreground">Every tracked day with date, day name, and earned XP.</p>
+
+            <div className="mt-4 max-h-80 space-y-3 overflow-auto pr-1">
+              {allTimeDailyXp.map((day) => (
+                <div key={day.day} className="rounded-xl border border-border/50 bg-background/70 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium">{day.label}</p>
+                      <p className="text-xs text-muted-foreground">{formatFullDateWithDay(day.day)} • {day.tasksCompleted} tasks</p>
+                    </div>
+                    <p className="text-lg font-semibold text-amber-500">{day.xp} XP</p>
+                  </div>
+                </div>
+              ))}
+
+              {loading ? <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">Loading all-time XP...</div> : null}
+              {!loading && allTimeDailyXp.length === 0 ? <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">No daily XP records yet.</div> : null}
+            </div>
           </div>
         </div>
       </div>

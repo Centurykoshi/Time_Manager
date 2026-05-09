@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -49,7 +50,29 @@ export function TodoPanel() {
   const [text, setText] = useState("");
   const [pendingSaves, setPendingSaves] = useState<Map<string, NodeJS.Timeout>>(new Map());
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const menuRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [activeTodoId, setActiveTodoId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  const openDifficultyMenu = (id: string) => {
+    const trigger = menuButtonRefs.current[id];
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const width = 144;
+    const height = 176;
+    const gap = 8;
+    const padding = 8;
+
+    const left = Math.min(Math.max(padding, rect.left), window.innerWidth - width - padding);
+    let top = rect.bottom + gap;
+    if (top + height > window.innerHeight - padding) {
+      top = Math.max(padding, rect.top - height - gap);
+    }
+
+    setMenuPosition({ top, left });
+    setOpenMenuId(id);
+  };
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 60_000);
@@ -61,11 +84,15 @@ export function TodoPanel() {
   }, [pendingSaves]);
 
   useEffect(() => {
-    // Close menu on outside click
     const handleOutsideClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (openMenuId && !target.closest(".group")) {
+      if (
+        openMenuId &&
+        !target.closest("[data-difficulty-menu='true']") &&
+        !target.closest("[data-difficulty-trigger='true']")
+      ) {
         setOpenMenuId(null);
+        setMenuPosition(null);
       }
     };
 
@@ -73,6 +100,21 @@ export function TodoPanel() {
 
     return () => {
       document.removeEventListener("click", handleOutsideClick);
+    };
+  }, [openMenuId]);
+
+  useEffect(() => {
+    if (!openMenuId) return;
+
+    const reposition = () => openDifficultyMenu(openMenuId);
+    reposition();
+
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
     };
   }, [openMenuId]);
 
@@ -152,6 +194,44 @@ export function TodoPanel() {
       window.removeEventListener("dashboard:changed", onDashboardChanged);
     };
   }, []);
+
+  useEffect(() => {
+    if (!activeTodoId) return;
+    if (!todos.some((todo) => todo.id === activeTodoId && isSameLocalDay(todo.createdAt, now))) {
+      setActiveTodoId(null);
+    }
+  }, [activeTodoId, now, todos]);
+
+  useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      if (!activeTodoId || !event.ctrlKey || event.altKey || event.metaKey) return;
+
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      const shortcutMap: Record<string, Difficulty> = {
+        e: "EASY",
+        m: "MEDIUM",
+        h: "HARD",
+        b: "BOSS",
+      };
+
+      const nextDifficulty = shortcutMap[key];
+      if (!nextDifficulty) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      void updateDifficulty(activeTodoId, nextDifficulty);
+    };
+
+    window.addEventListener("keydown", onShortcut, true);
+    return () => {
+      window.removeEventListener("keydown", onShortcut, true);
+    };
+  }, [activeTodoId, todos]);
 
   // Show only tasks created today
   const visibleTodos = todos.filter((todo) => isSameLocalDay(todo.createdAt, now));
@@ -359,7 +439,7 @@ export function TodoPanel() {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: 0.1 }}
-      className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/40 bg-card/50 p-6"
+      className="relative flex max-h-120 min-h-80 flex-col overflow-hidden rounded-xl border border-border/40 bg-card/50 p-6"
     >
       <div className="mb-4 space-y-2">
         <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Today's tasks</div>
@@ -388,7 +468,10 @@ export function TodoPanel() {
         </motion.div>
       </motion.div>
 
-      <div className="flex-1 min-h-0 space-y-2 overflow-auto">
+      <div
+        className="flex-1 min-h-0 space-y-2 overflow-auto"
+        onMouseLeave={() => setActiveTodoId(null)}
+      >
         {loading ? (
           <motion.div
             initial={{ opacity: 0 }}
@@ -418,48 +501,35 @@ export function TodoPanel() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -6, scale: 0.95 }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="flex items-center gap-2 rounded-lg bg-secondary/20 px-3 py-2 transition hover:bg-secondary/30 group"
+              onClick={() => setActiveTodoId(t.id)}
+              className={`group flex items-center gap-2 rounded-lg px-3 py-2 transition hover:bg-secondary/30 ${
+                activeTodoId === t.id
+                  ? "bg-secondary/35 border-b border-primary/50 rounded-b-none"
+                  : "bg-secondary/20"
+              }`}
             >
               <div className="relative flex items-center justify-center">
                 <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}>
                   <Button
-                    onClick={() => setOpenMenuId(openMenuId === t.id ? null : t.id)}
+                    ref={(el) => {
+                      menuButtonRefs.current[t.id] = el;
+                    }}
+                    data-difficulty-trigger="true"
+                    onClick={() => {
+                      if (openMenuId === t.id) {
+                        setOpenMenuId(null);
+                        setMenuPosition(null);
+                        return;
+                      }
+                      openDifficultyMenu(t.id);
+                    }}
                     variant="ghost"
                     size="icon"
-                    className="h-5 w-5 p-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                    className="h-5 w-5 shrink-0 p-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100"
                   >
                     <MoreVertical className="h-3 w-3" />
                   </Button>
                 </motion.div>
-                {openMenuId === t.id && (
-                  <motion.div
-                    ref={(el) => {
-                      if (el) menuRefs.current[t.id] = el;
-                    }}
-                    initial={{ opacity: 0, scale: 0.95, y: -5 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                    transition={{ duration: 0.15 }}
-                    className="absolute left-0 top-full mt-1 w-36 rounded-lg border border-border/40 bg-card/95 shadow-lg z-50"
-                  >
-                    <div className="p-2 space-y-1">
-                      {(["EASY", "MEDIUM", "HARD", "BOSS"] as Difficulty[]).map((diff) => (
-                        <motion.button
-                          key={diff}
-                          onClick={() => updateDifficulty(t.id, diff)}
-                          className={`w-full text-left text-xs px-2 py-1.5 rounded-md transition ${
-                            t.difficulty === diff
-                              ? "bg-primary/20 text-foreground font-medium"
-                              : "text-muted-foreground hover:bg-secondary/30"
-                          }`}
-                          whileHover={{ x: 1 }}
-                        >
-                          {diff}
-                        </motion.button>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
               </div>
               <input
                 type="checkbox"
@@ -467,7 +537,7 @@ export function TodoPanel() {
                 onChange={() => {
                   void toggle(t.id);
                 }}
-                className="h-4 w-4 rounded-full border border-primary/40 cursor-pointer accent-primary flex-shrink-0"
+                className="h-4 w-4 shrink-0 rounded-full border border-primary/40 cursor-pointer accent-primary"
               />
               <motion.span
                 initial={false}
@@ -499,6 +569,43 @@ export function TodoPanel() {
           </div>
         ) : null}
       </div>
+
+      {openMenuId && menuPosition
+        ? createPortal(
+            <AnimatePresence>
+              <motion.div
+                data-difficulty-menu="true"
+                initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                transition={{ duration: 0.12 }}
+                className="fixed z-70 h-38 w-36 overflow-hidden rounded-lg border border-border/40 bg-card/95 shadow-lg"
+                style={{ top: menuPosition.top, left: menuPosition.left }}
+              >
+                <div className="space-y-1 p-2">
+                  {(["EASY", "MEDIUM", "HARD", "BOSS"] as Difficulty[]).map((diff) => {
+                    const targetTodo = visibleTodos.find((todo) => todo.id === openMenuId);
+                    return (
+                      <motion.button
+                        key={diff}
+                        onClick={() => void updateDifficulty(openMenuId, diff)}
+                        className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition ${
+                          targetTodo?.difficulty === diff
+                            ? "bg-primary/20 font-medium text-foreground"
+                            : "text-muted-foreground hover:bg-secondary/30"
+                        }`}
+                        whileHover={{ x: 1 }}
+                      >
+                        {diff}
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            </AnimatePresence>,
+            document.body,
+          )
+        : null}
     </motion.div>
   );
 }
