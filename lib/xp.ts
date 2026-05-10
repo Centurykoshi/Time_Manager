@@ -12,6 +12,8 @@ export const DIFFICULTY_XP = {
 
 export type Difficulty = keyof typeof DIFFICULTY_XP;
 
+const FULL_XP_TASKS_PER_DIFFICULTY = 2;
+
 // Minimum XP for each difficulty (can't go below)
 const DIFFICULTY_MIN_XP = {
   EASY: 2,
@@ -24,13 +26,13 @@ export function getTaskXp(difficulty: Difficulty, completedCountForDifficulty: n
   const baseXp = DIFFICULTY_XP[difficulty] ?? 5;
   const minXp = DIFFICULTY_MIN_XP[difficulty] ?? 2;
   
-  // If 3 or fewer tasks completed for this difficulty, award full XP
-  if (completedCountForDifficulty <= 3) {
+  // Keep full XP for the first N tasks in a difficulty bucket.
+  if (completedCountForDifficulty < FULL_XP_TASKS_PER_DIFFICULTY) {
     return baseXp;
   }
   
-  // For each task beyond 3, decrease by 1 (minimum enforced)
-  const tasksOverThreshold = completedCountForDifficulty - 3;
+  // After the full-XP window, reduce by 1 for each additional completion.
+  const tasksOverThreshold = completedCountForDifficulty - (FULL_XP_TASKS_PER_DIFFICULTY - 1);
   const xpWithDecrease = baseXp - tasksOverThreshold;
   
   return Math.max(minXp, xpWithDecrease);

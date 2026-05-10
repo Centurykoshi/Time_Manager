@@ -1,14 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { isNotificationsSupported, getNotificationPermission, requestNotificationPermission } from "@/lib/notifications";
 
 export function useNotifications() {
-  const [isSupported] = useState(() => isNotificationsSupported());
-  const [permission, setPermission] = useState<"granted" | "denied" | "default">(() =>
-    isNotificationsSupported() ? getNotificationPermission() : "default",
-  );
+  const [isSupported, setIsSupported] = useState(false);
+  const [permission, setPermission] = useState<"granted" | "denied" | "default">("default");
   const [isRequesting, setIsRequesting] = useState(false);
+
+  useEffect(() => {
+    if (!isNotificationsSupported()) return;
+
+    setIsSupported(true);
+    setPermission(getNotificationPermission());
+  }, []);
 
   const request = async () => {
     if (!isSupported) return;

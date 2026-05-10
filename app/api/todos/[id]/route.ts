@@ -41,16 +41,24 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     // If marking as done and wasn't previously done, calculate and award XP
     if (body.isDone === true && currentTodo && !currentTodo.isDone) {
       const difficulty = body.difficulty ?? (currentTodo.difficulty as "EASY" | "MEDIUM" | "HARD" | "BOSS");
-      // Count how many tasks of this difficulty are already completed
-      const completedCount = await prisma.todoItem.count({
-        where: { userId: user.id, difficulty, isDone: true }
-      });
 
       const now = new Date();
       const dayStart = toLocalDateOnly(now);
       const dayEnd = addLocalDays(dayStart, 1);
 
-      const [taskXpToday, sessionsToday] = await Promise.all([
+      // Count already-completed tasks for this difficulty in the current local day.
+      const [completedCount, taskXpToday, sessionsToday] = await Promise.all([
+        prisma.todoItem.count({
+          where: {
+            userId: user.id,
+            difficulty,
+            isDone: true,
+            completedAt: {
+              gte: dayStart,
+              lt: dayEnd,
+            },
+          },
+        }),
         prisma.todoItem.aggregate({
           where: {
             userId: user.id,

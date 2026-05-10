@@ -49,28 +49,22 @@ export function GoalsPage() {
     const trimmed = tagName.trim();
     if (!trimmed) return null;
 
-    const response = await fetch("/api/todo-tags", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: trimmed, goalXp }),
-    });
+    try {
+      const response = await fetch("/api/todo-tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed, goalXp }),
+      });
 
-    if (!response.ok) {
-      throw new Error("Failed to save tag.");
-    }
-
-    const payload = (await response.json()) as { tag: TodoTag };
-    setTags((current) => {
-      const existingIndex = current.findIndex((item) => item.id === payload.tag.id);
-      if (existingIndex >= 0) {
-        const next = [...current];
-        next[existingIndex] = payload.tag;
-        return next;
+      if (!response.ok) {
+        return null;
       }
-      return [payload.tag, ...current];
-    });
 
-    return payload.tag;
+      const payload = (await response.json()) as { tag: { id: string } };
+      return payload.tag;
+    } catch {
+      return null;
+    }
   };
 
   const createGoal = async (group: GoalGroup, title: string, target: number, description: string, unit: string, difficulty: Difficulty) => {
