@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, Target, ListTodo, Home } from "lucide-react";
+import { Search, Target, ListTodo, Home, Palette } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
 
-type SidebarPage = "main" | "todos" | "goals";
+type SidebarPage = "main" | "todos" | "goals" | "themes";
 
 type SearchTodo = { id: string; title: string; description?: string | null };
 type SearchGoal = { id: string; title: string; description?: string | null; cadence: string };
@@ -97,6 +97,7 @@ export function CommandSearch({ onNavigate }: CommandSearchProps) {
       { id: "main", label: "Open Main", icon: Home, page: "main" as SidebarPage },
       { id: "todos", label: "Open Todos", icon: ListTodo, page: "todos" as SidebarPage },
       { id: "goals", label: "Open Goals", icon: Target, page: "goals" as SidebarPage },
+      { id: "themes", label: "Open Customization", icon: Palette, page: "themes" as SidebarPage },
     ];
 
     if (!normalized) {

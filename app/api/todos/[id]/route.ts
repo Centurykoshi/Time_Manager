@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { addLocalDays, getDashboardUser, toLocalDateOnly } from "@/lib/dashboard";
+import { addLocalDays, getCurrentUser, toLocalDateOnly } from "@/lib/dashboard";
 import { getSessionXp, getTaskXp, MAX_DAILY_XP } from "@/lib/xp";
 
 type Params = {
@@ -8,7 +8,8 @@ type Params = {
 };
 
 export async function PATCH(request: NextRequest, { params }: Params) {
-  const user = await getDashboardUser();
+  try {
+    const user = await getCurrentUser();
   const { id } = await params;
   const body = (await request.json()) as {
     title?: string;
@@ -105,10 +106,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const todo = await prisma.todoItem.findFirst({ where: { id, userId: user.id } });
   return NextResponse.json({ todo: todo ?? null });
+  } catch (error) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 }
 
 export async function DELETE(_request: NextRequest, { params }: Params) {
-  const user = await getDashboardUser();
+  try {
+    const user = await getCurrentUser();
   const { id } = await params;
 
   const deleteResult = await prisma.todoItem.deleteMany({ where: { id, userId: user.id } });
@@ -118,4 +123,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   }
 
   return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 }

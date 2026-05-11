@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getDashboardUser } from "@/lib/dashboard";
+import { getCurrentUser } from "@/lib/dashboard";
 
 const defaultGroups = [
   { name: "Weekly", slug: "weekly", type: "WEEKLY" },
@@ -10,8 +10,9 @@ const defaultGroups = [
 ] as const;
 
 export async function GET() {
-  const user = await getDashboardUser();
-  const groups = await Promise.all(
+  try {
+    const user = await getCurrentUser();
+    const groups = await Promise.all(
     defaultGroups.map((group) =>
       prisma.goalGroup.upsert({
         where: { userId_slug: { userId: user.id, slug: group.slug } },
@@ -39,60 +40,67 @@ export async function GET() {
     ),
   );
 
-  const goals = await prisma.goal.findMany({
-    where: { userId: user.id, isArchived: false },
-    include: { goalGroup: true, goalTag: true },
-    orderBy: [{ cadence: "asc" }, { createdAt: "desc" }],
-  });
+    const goals = await prisma.goal.findMany({
+      where: { userId: user.id, isArchived: false },
+      include: { goalGroup: true, goalTag: true },
+      orderBy: [{ cadence: "asc" }, { createdAt: "desc" }],
+    });
 
-  return NextResponse.json({ goals });
+    return NextResponse.json({ goals });
+  } catch (error) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getDashboardUser();
-  const body = (await request.json()) as {
-    title?: string;
-    description?: string | null;
-    cadence?: "WEEKLY" | "MONTHLY" | "YEARLY" | "ALL_TIME";
-    targetValue?: number;
-    currentValue?: number;
-    unit?: string;
-    goalGroupId?: string | null;
-    goalTagId?: string | null;
-  };
+  try {
+    const user = await getCurrentUser();
+    const body = (await request.json()) as {
+      title?: string;
+      description?: string | null;
+      cadence?: "WEEKLY" | "MONTHLY" | "YEARLY" | "ALL_TIME";
+      targetValue?: number;
+      currentValue?: number;
+      unit?: string;
+      goalGroupId?: string | null;
+      goalTagId?: string | null;
+    };
 
-  const title = body.title?.trim();
-  const targetValue = Number(body.targetValue ?? 0);
+    const title = body.title?.trim();
+    const targetValue = Number(body.targetValue ?? 0);
 
-  if (!title) {
-    return NextResponse.json({ error: "Title is required." }, { status: 400 });
-  }
-
-  if (!Number.isFinite(targetValue) || targetValue <= 0) {
-    return NextResponse.json({ error: "targetValue must be greater than 0." }, { status: 400 });
-  }
-
-  if (body.goalTagId) {
-    const tag = await prisma.todoTag.findFirst({ where: { id: body.goalTagId, userId: user.id } });
-    if (!tag) {
-      return NextResponse.json({ error: "Goal tag not found." }, { status: 404 });
+    if (!title) {
+      return NextResponse.json({ error: "Title is required." }, { status: 400 });
     }
+
+    if (!Number.isFinite(targetValue) || targetValue <= 0) {
+      return NextResponse.json({ error: "targetValue must be greater than 0." }, { status: 400 });
+    }
+
+    if (body.goalTagId) {
+      const tag = await prisma.todoTag.findFirst({ where: { id: body.goalTagId, userId: user.id } });
+      if (!tag) {
+        return NextResponse.json({ error: "Goal tag not found." }, { status: 404 });
+      }
+    }
+
+    const goal = await prisma.goal.create({
+      data: {
+        userId: user.id,
+        title,
+        description: body.description?.trim() || null,
+        cadence: body.cadence ?? "WEEKLY",
+        targetValue: Math.round(targetValue),
+        currentValue: Math.max(0, Math.round(body.currentValue ?? 0)),
+        unit: body.unit?.trim() || "sessions",
+        goalGroupId: body.goalGroupId ?? null,
+        goalTagId: body.goalTagId ?? null,
+      },
+      include: { goalGroup: true, goalTag: true },
+    });
+
+    return NextResponse.json({ goal }, { status: 201 });
+  } catch (error) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const goal = await prisma.goal.create({
-    data: {
-      userId: user.id,
-      title,
-      description: body.description?.trim() || null,
-      cadence: body.cadence ?? "WEEKLY",
-      targetValue: Math.round(targetValue),
-      currentValue: Math.max(0, Math.round(body.currentValue ?? 0)),
-      unit: body.unit?.trim() || "sessions",
-      goalGroupId: body.goalGroupId ?? null,
-      goalTagId: body.goalTagId ?? null,
-    },
-    include: { goalGroup: true, goalTag: true },
-  });
-
-  return NextResponse.json({ goal }, { status: 201 });
 }

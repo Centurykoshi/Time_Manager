@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getDashboardUser } from "@/lib/dashboard";
+import { getCurrentUser } from "@/lib/dashboard";
 
 function toSlug(value: string) {
   return value
@@ -22,18 +22,22 @@ function toGoalXp(slug: string, fallback = 10) {
 }
 
 export async function GET() {
-  const user = await getDashboardUser();
-  const tags = await prisma.todoTag.findMany({
-    where: { userId: user.id },
-    orderBy: [{ isBuiltin: "desc" }, { createdAt: "asc" }],
-  });
+  try {
+    const user = await getCurrentUser();
+    const tags = await prisma.todoTag.findMany({
+      where: { userId: user.id },
+      orderBy: [{ isBuiltin: "desc" }, { createdAt: "asc" }],
+    });
 
-  return NextResponse.json({ tags });
+    return NextResponse.json({ tags });
+  } catch (error) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await getDashboardUser();
+    const user = await getCurrentUser();
     const body = (await request.json()) as {
       name?: string;
       goalXp?: number;

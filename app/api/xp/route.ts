@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { addLocalDays, formatDayLabel, getDashboardUser, toLocalDateOnly } from "@/lib/dashboard";
+import { addLocalDays, formatDayLabel, getCurrentUser, toLocalDateOnly } from "@/lib/dashboard";
 import { getSessionXp, getXpLevel, MAX_DAILY_XP } from "@/lib/xp";
 
 function toLocalDateKey(date: Date) {
@@ -12,7 +12,8 @@ function toLocalDateKey(date: Date) {
 }
 
 export async function GET() {
-  const user = await getDashboardUser();
+  try {
+    const user = await getCurrentUser();
   
   // Get all completed todos with their XP rewards
   const completedTodos = await prisma.todoItem.findMany({
@@ -103,4 +104,7 @@ export async function GET() {
     dailyXp,
     recentTasks: completedTodos,
   });
+  } catch (error) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 }

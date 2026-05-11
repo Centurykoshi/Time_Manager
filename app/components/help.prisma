@@ -1,0 +1,231 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+model Document {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  slug        String     @unique
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  excerpt     String     @default("SOMETHING...") // Short description for SEO and previews
+  contentJSON Json // TipTap editor content
+  contentHTML String     @db.Text // Rendered HTML for display
+  featuredImg String     @default("")
+  status      PostStatus @default(DRAFT)
+  published   DateTime?
+  Tag         Tag        @default(All)
+  Author      String?    @default("Piyush")
+  Views       Int        @default(1)
+
+  @@index([status])
+  @@index([published])
+  @@index([userId])
+  @@index([slug])
+  @@map("documents")
+}
+
+model Post {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // SEO fields
+  metaTitle       String?
+  metaDescription String?
+
+  // Analytics
+  viewCount   Int @default(0)
+  readingTime Int @default(0) // in minutes
+
+  // Author relationship
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Relations
+  tags     PostTag[]
+  comments Comment[]
+
+  // Indexes for performance
+
+  @@map("posts")
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISH
+}
+
+enum Tag {
+  All
+  Tech
+  LifeStyle
+  Travel
+  Games
+}
+
+model PostTag {
+  postId String
+  tagId  String
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+  @@map("post_tags")
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  message String @db.Text
+  // approved Boolean @default(false) // Moderation
+
+  // Relations
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  // Threading support (replies to comments)
+  // parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  // parentId String?
+  // replies  Comment[] @relation("CommentReplies")
+  // @@index([approved])
+
+  @@index([postId])
+  @@index([userId])
+}
+
+model User {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name             String
+  email            String    @unique
+  emailVerified    Boolean   @default(false)
+  image            String?
+  age              Int?
+  gender           String?
+  profileCompleted Boolean   @default(false)
+  role             UserRole  @default(USER)
+  banned           Boolean   @default(false)
+  banReason        String?
+  banExpires       DateTime?
+
+  accounts  Account[]
+  sessions  Session[]
+  posts     Post[]
+  comments  Comment[]
+  media     Media[]
+  artworks  Artwork[]
+  documents Document[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+model Artwork {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title       String
+  description String   @db.Text
+  imageUrl    String
+  tags        String[] @default([])
+  year        Int?
+  sortOrder   Int      @default(0)
+  isPublished Boolean  @default(true)
+
+  uploadedById String
+  uploadedBy   User   @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@index([sortOrder])
+  @@index([createdAt])
+  @@index([uploadedById])
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  expiresAt      DateTime
+  token          String   @unique
+  ipAddress      String?
+  userAgent      String?
+  impersonatedBy String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Media {
+  id           String   @id @default(cuid())
+  url          String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  uploadedById String
+  createdAt    DateTime @default(now())
+}
+
+model Account {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, providerId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  identifier String
+  value      String
+  expiresAt  DateTime
+
+  @@unique([identifier, value])
+  @@index([expiresAt])
+  @@map("verifications")
+}

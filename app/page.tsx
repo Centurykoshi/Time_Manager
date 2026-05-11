@@ -3,16 +3,22 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { CheckCircle2, Clock, CircleDot, Flame } from "lucide-react";
+import Link from "next/link";
 import { TimerPanel } from "./components/TimerPanel";
 import { TodoPanel } from "./components/TodoPanel";
 import { Sidebar } from "./components/Sidebar";
 import { TodosPage } from "./components/TodosPage";
 import { GoalsPage } from "./components/GoalsPage";
 import { XpPage } from "./components/XpPage";
+
 import { CommandSearch } from "./components/CommandSearch";
 import { ThemeToggle } from "./components/ui/theme-toggle";
-import { AuthMenu } from "./components/AuthMenu";
+import { Button } from "./components/ui/button";
+import { UserAvatarMenu } from "./components/UserAvatarMenu";
+import { SidebarProvider, SidebarInset } from "./components/ui/sidebar";
+
 import { NotificationPermissionBanner } from "./components/NotificationPermissionBanner";
+import { authClient } from "@/lib/auth-client";
 
 type DashboardSnapshot = {
   todosSummary: { total: number; done: number; open: number };
@@ -30,7 +36,7 @@ type DashboardSnapshot = {
   dailySeries: Array<{ day: string; label: string; studiedMinutes: number; focusSessions: number }>;
 };
 
-type SidebarPage = "main" | "todos" | "goals" | "xp";
+type SidebarPage = "main" | "todos" | "goals" | "xp" | "themes";
 
 type DashboardTodo = {
   id: string;
@@ -84,7 +90,25 @@ export default function Home() {
   const [xpLevel, setXpLevel] = useState<number | null>(null);
   const [todosForTodayStats, setTodosForTodayStats] = useState<DashboardTodo[]>([]);
   const [studySessionsForFooter, setStudySessionsForFooter] = useState<DashboardStudySession[]>([]);
+  const [session, setSession] = useState<any>(null);
   const lastLocalDayRef = useRef(startOfLocalDay(new Date()).getTime());
+
+
+  useEffect(() => {
+    const fetchSession = async () => {
+      try {
+        const sessionData = await authClient.getSession();
+        // Only set session if there's an actual authenticated user
+        // (not the demo user)
+        if (sessionData?.data?.user?.id && !sessionData.data.user.email?.includes("focus.local")) {
+          setSession(sessionData.data);
+        }
+      } catch (error) {
+        // No session, that's fine
+      }
+    };
+    fetchSession();
+  }, []);
 
   const todaysTodos = todosForTodayStats.filter((todo) => isSameLocalDay(todo.createdAt, now));
   const todaysDoneCount = todaysTodos.filter((todo) => todo.isDone).length;
@@ -167,46 +191,48 @@ export default function Home() {
   }, []);
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.4 }}
-      className="min-h-screen flex flex-col bg-background text-foreground"
-    >
-      <header className="border-b border-border/40 bg-card/50 px-8 py-4">
+    <SidebarProvider defaultOpen>
+      <Sidebar 
+        activePage={currentPage} 
+        onPageChange={setCurrentPage}
+        todoCount={todoCount}
+        goalCount={goalCount}
+        xpCount={xpLevel ?? undefined}
+      />
+      <SidebarInset>
         <motion.div
-          initial={{ y: -10 }}
-          animate={{ y: 0 }}
-          transition={{ duration: 0.3 }}
-          className="mx-auto flex max-w-7xl items-center justify-between gap-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4 }}
+          className="min-h-screen flex flex-col bg-background text-foreground"
         >
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <svg className="h-4 w-4 text-primary-foreground" viewBox="0 0 14 14" fill="none">
-                <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5" />
-                <circle cx="7" cy="7" r="2" fill="currentColor" />
-              </svg>
-            </div>
-            <span className="text-sm font-semibold tracking-wide">FocusFlow</span>
-          </div>
-
-          <div className="ml-auto flex items-center gap-3">
+        <header className="sticky top-0 z-40 border-b border-border/40 bg-background/95 backdrop-blur-sm px-6 py-4">
+          <motion.div
+            initial={{ y: -10 }}
+            animate={{ y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="flex items-center justify-end gap-3"
+          >
+            <div className="flex items-center gap-3 opacity-80 transition-opacity hover:opacity-100">
             <CommandSearch onNavigate={setCurrentPage} />
-            <AuthMenu />
             <ThemeToggle />
+            {session?.user ? (
+              <UserAvatarMenu user={session.user} />
+            ) : (
+              <div className="flex gap-2">
+                <Button variant="outline" asChild>
+                  <Link href="/login">Sign In</Link>
+                </Button>
+                <Button variant="default" asChild>
+                  <Link href="/signup">Sign Up</Link>
+                </Button>
+              </div>
+            )}
           </div>
-        </motion.div>
-      </header>
+          </motion.div>
+        </header>
 
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar 
-          activePage={currentPage} 
-          onPageChange={setCurrentPage}
-          todoCount={todoCount}
-          goalCount={goalCount}
-          xpCount={xpLevel ?? undefined}
-        />
-        <main className="flex-1 overflow-auto px-8 py-8">
+        <main className="flex-1 overflow-auto px-6 py-8">
           <div className="mx-auto max-w-4xl">
             {currentPage === "main" && (
               <motion.div
@@ -265,16 +291,15 @@ export default function Home() {
             )}
           </div>
         </main>
-      </div>
 
-      <motion.footer
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.3, delay: 0.3 }}
-        className="border-t border-border/40 bg-card/50 px-8 py-4"
-      >
-        <div className="mx-auto max-w-7xl">
-          <div className="grid gap-3 md:grid-cols-4">
+        <motion.footer
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.3, delay: 0.3 }}
+          className="px-6 py-4 mt-auto bg-transparent"
+        >
+          <div className="mx-auto max-w-4xl">
+            <div className="grid gap-3 md:grid-cols-4">
             {[
               { label: "Tasks done today", value: todaysDoneCount, sub: `of ${todaysTodos.length}`, Icon: CheckCircle2, color: "text-emerald-500" },
               { label: "Study time today", value: `${todaysStudyMinutes}m`, sub: `${todaysFocusSessions} sessions`, Icon: Clock, color: "text-blue-500" },
@@ -299,7 +324,7 @@ export default function Home() {
                 <motion.div
                   key={item.label}
                   whileHover={{ scale: 1.02, y: -2 }}
-                    className={`rounded-lg border border-border/30 bg-secondary/20 backdrop-blur-sm transition ${item.compact ? "p-2" : "p-3"}`}
+                    className={`rounded-lg bg-secondary/20 backdrop-blur-sm transition ${item.compact ? "p-2" : "p-3"}`}
                 >
                   <div className={`flex items-start gap-2 ${item.compact ? "gap-1.5" : "gap-2"}`}>
                     <Icon className={`${item.compact ? "h-3.5 w-3.5" : "h-4 w-4"} mt-0.5 opacity-70 ${item.color}`} />
@@ -312,9 +337,11 @@ export default function Home() {
                 </motion.div>
               );
             })}
+            </div>
           </div>
-        </div>
-      </motion.footer>
-    </motion.div>
+        </motion.footer>
+        </motion.div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

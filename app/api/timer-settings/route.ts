@@ -1,16 +1,9 @@
+import { getCurrentUser } from "@/lib/dashboard";
 import { prisma } from "@/lib/prisma";
-
-async function getDashboardUser() {
-  const user = await prisma.user.findFirst({
-    orderBy: { createdAt: "asc" },
-  });
-  if (!user) throw new Error("User not found");
-  return user;
-}
 
 export async function GET() {
   try {
-    const user = await getDashboardUser();
+    const user = await getCurrentUser();
     let settings = await prisma.timerSettings.findUnique({
       where: { userId: user.id },
     });
@@ -32,13 +25,13 @@ export async function GET() {
     return Response.json(settings);
   } catch (error) {
     console.error("GET /api/timer-settings:", error);
-    return Response.json({ error: "Failed to fetch timer settings" }, { status: 500 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const user = await getDashboardUser();
+    const user = await getCurrentUser();
     const { animationIcon, soundType, soundUrl, favoriteMinutes, latestMinutes, timerStatus, timerDurationSec, timerRemainingSec, timerEndsAt } = (await request.json()) as {
       animationIcon?: string;
       soundType?: string;
@@ -81,13 +74,13 @@ export async function POST(request: Request) {
     return Response.json(settings);
   } catch (error) {
     console.error("POST /api/timer-settings:", error);
-    return Response.json({ error: "Failed to save timer settings" }, { status: 500 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 }
 
 export async function PATCH(request: Request) {
   try {
-    const user = await getDashboardUser();
+    const user = await getCurrentUser();
     const { favoriteMinutes, latestMinutes, timerStatus, timerDurationSec, timerRemainingSec, timerEndsAt } = (await request.json()) as {
       favoriteMinutes?: number;
       latestMinutes?: number;
@@ -135,6 +128,6 @@ export async function PATCH(request: Request) {
     return Response.json(settings);
   } catch (error) {
     console.error("PATCH /api/timer-settings:", error);
-    return Response.json({ error: "Failed to update timer settings" }, { status: 500 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 }

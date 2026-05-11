@@ -5,6 +5,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum TodoPriority {
@@ -39,9 +40,11 @@ model User {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  image         String?
 
   name      String
   email     String @unique
+  emailVerified    Boolean   @default(false)
   timezone  String?
 
   todos               TodoItem[]
@@ -52,6 +55,8 @@ model User {
   goals               Goal[]
   goalGroups          GoalGroup[]
   timerSettings       TimerSettings?
+  accounts  Account[]
+  sessions  Session[]
 
   @@index([email])
   @@map("users")
@@ -124,6 +129,44 @@ model StudySession {
   @@index([userId, source])
   @@map("study_sessions")
 }
+
+model Account {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, providerId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  identifier String
+  value      String
+  expiresAt  DateTime
+
+  @@unique([identifier, value])
+  @@index([expiresAt])
+  @@map("verifications")
+}
+
 
 model DailyStudySummary {
   id        String   @id @default(cuid())
@@ -210,6 +253,28 @@ model GoalGroup {
   @@unique([userId, slug])
   @@map("goal_groups")
 }
+
+
+model Session {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  expiresAt      DateTime
+  token          String   @unique
+  ipAddress      String?
+  userAgent      String?
+  impersonatedBy String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
 
 model TimerSettings {
   id        String   @id @default(cuid())

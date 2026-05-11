@@ -7,6 +7,7 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { MoreVertical } from "lucide-react";
 import { toast } from "sonner";
+import { readLocalTodos, writeLocalTodos } from "@/lib/local-todos";
 
 type Difficulty = "EASY" | "MEDIUM" | "HARD" | "BOSS";
 
@@ -43,11 +44,37 @@ function dispatchDashboardRefresh() {
   window.dispatchEvent(new Event("dashboard:changed"));
 }
 
+function createLocalId() {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function toLocalTodo(todo: Todo) {
+  return {
+    id: todo.id,
+    title: todo.text,
+    isDone: todo.done,
+    createdAt: todo.createdAt,
+    completedAt: todo.completedAt,
+    difficulty: todo.difficulty ?? "EASY",
+  };
+}
+
+function fromLocalTodo(todo: ReturnType<typeof readLocalTodos>[number]): Todo {
+  return {
+    id: todo.id,
+    text: todo.title,
+    done: todo.isDone,
+    createdAt: todo.createdAt,
+    completedAt: todo.completedAt,
+    difficulty: todo.difficulty ?? "EASY",
+  };
+}
+
 export function TodoPanel() {
   const [now, setNow] = useState(() => new Date());
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [storageMode, setStorageMode] = useState<"remote" | "local">("remote");
   const [text, setText] = useState("");
   const [pendingSaves, setPendingSaves] = useState<Map<string, NodeJS.Timeout>>(new Map());
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -121,7 +148,11 @@ export function TodoPanel() {
 
   const fetchTodos = async () => {
     const response = await fetch("/api/todos", { cache: "no-store" });
-    if (!response.ok) throw new Error("Failed to load todos.");
+    if (!response.ok) {
+      const error = new Error("Failed to load todos.");
+      (error as Error & { status?: number }).status = response.status;
+      throw error;
+    }
 
     const payload = (await response.json()) as {
       todos: Array<{
@@ -145,14 +176,24 @@ export function TodoPanel() {
     }));
   };
 
+  const loadLocalTodos = () => readLocalTodos().map(fromLocalTodo);
+
+  const saveLocalTodos = (nextTodos: Todo[]) => {
+    writeLocalTodos(nextTodos.map(toLocalTodo));
+  };
+
   const reloadTodos = async () => {
     try {
       setLoading(true);
-      setError(null);
       const nextTodos = await fetchTodos();
+      setStorageMode("remote");
       setTodos(nextTodos);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load todos.");
+      setStorageMode("local");
+      setTodos(loadLocalTodos());
+      if (loadError instanceof Error && (loadError as Error & { status?: number }).status !== 401) {
+        console.error("Failed to load todos:", loadError);
+      }
     } finally {
       setLoading(false);
     }
@@ -164,14 +205,18 @@ export function TodoPanel() {
     const loadTodos = async () => {
       try {
         setLoading(true);
-        setError(null);
         const nextTodos = await fetchTodos();
         if (active) {
+          setStorageMode("remote");
           setTodos(nextTodos);
         }
       } catch (loadError) {
         if (active) {
-          setError(loadError instanceof Error ? loadError.message : "Failed to load todos.");
+          setStorageMode("local");
+          setTodos(loadLocalTodos());
+          if (loadError instanceof Error && (loadError as Error & { status?: number }).status !== 401) {
+            console.error("Failed to load todos:", loadError);
+          }
         }
       } finally {
         if (active) setLoading(false);
@@ -242,7 +287,29 @@ export function TodoPanel() {
     const trimmed = text.trim();
     if (!trimmed) return;
 
+    const createLocalTodo = () => {
+      const nextTodo: Todo = {
+        id: createLocalId(),
+        text: trimmed,
+        done: false,
+        createdAt: new Date().toISOString(),
+        completedAt: null,
+        difficulty: "EASY",
+      };
+
+      const nextTodos = [nextTodo, ...todos];
+      setTodos(nextTodos);
+      saveLocalTodos(nextTodos);
+      setStorageMode("local");
+      setText("");
+    };
+
     try {
+      if (storageMode === "local") {
+        createLocalTodo();
+        return;
+      }
+
       const response = await fetch("/api/todos", {
         method: "POST",
         headers: {
@@ -279,7 +346,7 @@ export function TodoPanel() {
       setText("");
       dispatchDashboardRefresh();
     } catch {
-      setError("Failed to add todo.");
+      createLocalTodo();
     }
   };
 
@@ -294,6 +361,13 @@ export function TodoPanel() {
     setTodos((current) => current.map((todo) => (todo.id === id ? { ...todo, done: nextDone, completedAt: nextCompletedAt } : todo)));
 
     // Save immediately (no delay)
+    if (storageMode === "local") {
+      const nextTodos = todos.map((todo) => (todo.id === id ? { ...todo, done: nextDone, completedAt: nextCompletedAt } : todo));
+      setTodos(nextTodos);
+      saveLocalTodos(nextTodos);
+      return;
+    }
+
     try {
       const response = await fetch(`/api/todos/${id}`, {
         method: "PATCH",
@@ -354,14 +428,10 @@ export function TodoPanel() {
 
       dispatchDashboardRefresh();
     } catch {
-      setError("Failed to update todo.");
-      // Revert to previous state on error
-      setTodos((current) => current.map((todo) => (todo.id === id ? { ...todo, done: target.done, completedAt: target.completedAt } : todo)));
-      setPendingSaves((prev) => {
-        const next = new Map(prev);
-        next.delete(id);
-        return next;
-      });
+      const nextTodos = todos.map((todo) => (todo.id === id ? { ...todo, done: nextDone, completedAt: nextCompletedAt } : todo));
+      setTodos(nextTodos);
+      saveLocalTodos(nextTodos);
+      setStorageMode("local");
     }
   };
 
@@ -374,6 +444,13 @@ export function TodoPanel() {
     setTodos((current) =>
       current.map((todo) => (todo.id === id ? { ...todo, difficulty } : todo)),
     );
+
+    if (storageMode === "local") {
+      const nextTodos = todos.map((todo) => (todo.id === id ? { ...todo, difficulty } : todo));
+      setTodos(nextTodos);
+      saveLocalTodos(nextTodos);
+      return;
+    }
 
     try {
       const response = await fetch(`/api/todos/${id}`, {
@@ -416,7 +493,6 @@ export function TodoPanel() {
 
       dispatchDashboardRefresh();
     } catch {
-      setError("Failed to update difficulty.");
       // Revert to previous state on error
       setTodos((current) =>
         current.map((todo) => (todo.id === id ? { ...todo, difficulty: target.difficulty } : todo)),
@@ -427,6 +503,13 @@ export function TodoPanel() {
   const remove = async (id: string) => {
     const previousTodos = todos;
     setTodos((current) => current.filter((todo) => todo.id !== id));
+
+    if (storageMode === "local") {
+      const nextTodos = previousTodos.filter((todo) => todo.id !== id);
+      setTodos(nextTodos);
+      saveLocalTodos(nextTodos);
+      return;
+    }
 
     try {
       const response = await fetch(`/api/todos/${id}`, {
@@ -439,7 +522,6 @@ export function TodoPanel() {
 
       dispatchDashboardRefresh();
     } catch {
-      setError("Failed to delete todo.");
       setTodos(previousTodos);
     }
   };
@@ -489,16 +571,6 @@ export function TodoPanel() {
             className="rounded-lg border border-border/40 bg-secondary/20 p-3 text-sm text-muted-foreground"
           >
             Loading tasks...
-          </motion.div>
-        ) : null}
-
-        {error ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-          >
-            {error}
           </motion.div>
         ) : null}
 
@@ -579,6 +651,12 @@ export function TodoPanel() {
           </div>
         ) : null}
       </div>
+
+      {storageMode === "local" ? (
+        <p className="mt-3 text-[11px] leading-4 text-muted-foreground/75">
+          Your data is saved temporarily in localStorage. Please log in for permanent data.
+        </p>
+      ) : null}
 
       {openMenuId && menuPosition
         ? createPortal(

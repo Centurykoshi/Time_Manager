@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/dashboard";
 
 export async function GET(req: NextRequest) {
   try {
-    // Get current user ID from headers (you'll need to implement auth)
-    // For now, we'll use a placeholder
-    const userId = req.headers.get("x-user-id") || "default-user";
+    const user = await getCurrentUser();
+    const userId = user.id;
 
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -59,10 +59,6 @@ export async function GET(req: NextRequest) {
       goals,
     });
   } catch (error) {
-    console.error("Error fetching sidebar data:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch sidebar data" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 }

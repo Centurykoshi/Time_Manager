@@ -1,6 +1,8 @@
 import "server-only";
 
+import { headers } from "next/headers";
 import { prisma } from "./prisma";
+import { auth } from "./auth";
 
 export type DashboardSnapshot = {
   todosSummary: {
@@ -36,6 +38,29 @@ export type DashboardSnapshot = {
 const dashboardEmail = process.env.DASHBOARD_USER_EMAIL ?? "dashboard@focus.local";
 const dashboardName = process.env.DASHBOARD_USER_NAME ?? "Focus Dashboard";
 
+/**
+ * Get the currently authenticated user.
+ * Throws when there is no active session so logged-out requests cannot persist data.
+ */
+export async function getCurrentUser() {
+  const headersList = await headers();
+  const session = await auth.api.getSession({
+    headers: headersList,
+  });
+
+  if (session?.user?.id) {
+    return prisma.user.findUniqueOrThrow({
+      where: { id: session.user.id },
+    });
+  }
+
+  throw new Error("Unauthorized");
+}
+
+/**
+ * Fallback for demo/dashboard purposes
+ * DO NOT use in production for user-specific data
+ */
 export async function getDashboardUser() {
   return prisma.user.upsert({
     where: { email: dashboardEmail },
@@ -115,7 +140,7 @@ function getStreakState(series: Array<{ day: Date; studiedMinutes: number; focus
 }
 
 export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
-  const user = await getDashboardUser();
+  const user = await getCurrentUser();
   const today = toUtcDateOnly(new Date());
   const weekStart = startOfUtcWeek(today);
   const weekEnd = addUtcDays(weekStart, 6);
@@ -241,7 +266,7 @@ export async function recordStudySession(input: {
   notes?: string | null;
   source?: "TIMER" | "MANUAL" | "IMPORTED";
 }) {
-  const user = await getDashboardUser();
+  const user = await getCurrentUser();
   const startedAt = input.startedAt ?? new Date();
   const endedAt = input.endedAt ?? new Date();
   const durationMinutes = Math.max(1, Math.round(input.durationMinutes));

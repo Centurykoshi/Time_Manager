@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
+import { readLocalTodos, writeLocalTodos } from "@/lib/local-todos";
 
 type Difficulty = "EASY" | "MEDIUM" | "HARD" | "BOSS";
 
@@ -24,22 +25,70 @@ type TodoItem = {
 
 type TimeFilter = "today" | "week" | "month" | "year" | "allTime";
 
+type StorageMode = "remote" | "local";
+
+function createLocalId() {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function fromLocalTodo(todo: ReturnType<typeof readLocalTodos>[number]): TodoItem {
+  return {
+    id: todo.id,
+    title: todo.title,
+    description: todo.description ?? undefined,
+    isDone: todo.isDone,
+    createdAt: todo.createdAt,
+    dueAt: todo.dueAt,
+    priority: todo.priority ?? "MEDIUM",
+    estimatedMinutes: todo.estimatedMinutes ?? undefined,
+    difficulty: todo.difficulty,
+  };
+}
+
+function toLocalTodo(todo: TodoItem) {
+  return {
+    id: todo.id,
+    title: todo.title,
+    description: todo.description ?? null,
+    isDone: todo.isDone,
+    createdAt: todo.createdAt,
+    completedAt: null,
+    difficulty: todo.difficulty,
+    priority: todo.priority,
+    dueAt: todo.dueAt,
+    estimatedMinutes: todo.estimatedMinutes ?? null,
+  };
+}
+
 export function TodosPage() {
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [newTodoTitle, setNewTodoTitle] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [activeFilter, setActiveFilter] = useState<TimeFilter>("today");
+  const [storageMode, setStorageMode] = useState<StorageMode>("remote");
+
+  const loadLocalTodos = () => readLocalTodos().map(fromLocalTodo);
+
+  const saveLocalTodos = (nextTodos: TodoItem[]) => {
+    writeLocalTodos(nextTodos.map(toLocalTodo));
+  };
 
   async function fetchTodos() {
     try {
       const response = await fetch("/api/todos", { cache: "no-store" });
       if (response.ok) {
         const data = (await response.json()) as { todos: TodoItem[] };
+        setStorageMode("remote");
         setTodos(data.todos);
+      } else {
+        setStorageMode("local");
+        setTodos(loadLocalTodos());
       }
     } catch (error) {
       console.error("Failed to fetch todos:", error);
+      setStorageMode("local");
+      setTodos(loadLocalTodos());
     } finally {
       setIsLoading(false);
     }
@@ -114,8 +163,34 @@ export function TodosPage() {
   const handleAddTodo = async () => {
     if (!newTodoTitle.trim()) return;
 
+    const addLocalTodo = () => {
+      const nextTodo: TodoItem = {
+        id: createLocalId(),
+        title: newTodoTitle.trim(),
+        description: undefined,
+        isDone: false,
+        createdAt: new Date().toISOString(),
+        dueAt: undefined,
+        priority: "MEDIUM",
+        estimatedMinutes: undefined,
+        difficulty: "EASY",
+      };
+
+      const nextTodos = [nextTodo, ...todos];
+      setTodos(nextTodos);
+      saveLocalTodos(nextTodos);
+      setStorageMode("local");
+      setNewTodoTitle("");
+      window.dispatchEvent(new Event("dashboard:changed"));
+    };
+
     setIsAdding(true);
     try {
+      if (storageMode === "local") {
+        addLocalTodo();
+        return;
+      }
+
       const response = await fetch("/api/todos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -126,9 +201,12 @@ export function TodosPage() {
         await fetchTodos();
         setNewTodoTitle("");
         window.dispatchEvent(new Event("dashboard:changed"));
+      } else {
+        addLocalTodo();
       }
     } catch (error) {
       console.error("Failed to add todo:", error);
+      addLocalTodo();
     } finally {
       setIsAdding(false);
     }
@@ -136,6 +214,14 @@ export function TodosPage() {
 
 
   const handleToggleTodo = async (id: string, currentStatus: boolean) => {
+    if (storageMode === "local") {
+      const nextTodos = todos.map((todo) => (todo.id === id ? { ...todo, isDone: !currentStatus } : todo));
+      setTodos(nextTodos);
+      saveLocalTodos(nextTodos);
+      window.dispatchEvent(new Event("dashboard:changed"));
+      return;
+    }
+
     try {
       const response = await fetch(`/api/todos/${id}`, {
         method: "PATCH",
@@ -146,22 +232,48 @@ export function TodosPage() {
       if (response.ok) {
         await fetchTodos();
         window.dispatchEvent(new Event("dashboard:changed"));
+      } else {
+        const nextTodos = todos.map((todo) => (todo.id === id ? { ...todo, isDone: !currentStatus } : todo));
+        setTodos(nextTodos);
+        saveLocalTodos(nextTodos);
+        setStorageMode("local");
       }
     } catch (error) {
       console.error("Failed to update todo:", error);
+      const nextTodos = todos.map((todo) => (todo.id === id ? { ...todo, isDone: !currentStatus } : todo));
+      setTodos(nextTodos);
+      saveLocalTodos(nextTodos);
+      setStorageMode("local");
     }
   };
 
   const handleDeleteTodo = async (id: string) => {
+    if (storageMode === "local") {
+      const nextTodos = todos.filter((todo) => todo.id !== id);
+      setTodos(nextTodos);
+      saveLocalTodos(nextTodos);
+      window.dispatchEvent(new Event("dashboard:changed"));
+      return;
+    }
+
     try {
       const response = await fetch(`/api/todos/${id}`, { method: "DELETE" });
 
       if (response.ok) {
         await fetchTodos();
         window.dispatchEvent(new Event("dashboard:changed"));
+      } else {
+        const nextTodos = todos.filter((todo) => todo.id !== id);
+        setTodos(nextTodos);
+        saveLocalTodos(nextTodos);
+        setStorageMode("local");
       }
     } catch (error) {
       console.error("Failed to delete todo:", error);
+      const nextTodos = todos.filter((todo) => todo.id !== id);
+      setTodos(nextTodos);
+      saveLocalTodos(nextTodos);
+      setStorageMode("local");
     }
   };
 
@@ -316,6 +428,12 @@ export function TodosPage() {
           ))
         )}
       </div>
+
+      {storageMode === "local" ? (
+        <p className="text-[11px] leading-4 text-muted-foreground/75">
+          Your data is saved temporarily in localStorage. Please log in for permanent data.
+        </p>
+      ) : null}
     </motion.div>
   );
 }
