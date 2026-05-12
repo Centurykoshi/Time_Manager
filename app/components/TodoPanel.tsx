@@ -109,6 +109,7 @@ export function TodoPanel() {
   const [activeTodoId, setActiveTodoId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   const getPersistedId = (todo: Todo) => todo.serverId ?? todo.id;
 
@@ -302,6 +303,9 @@ export function TodoPanel() {
 
     setTodos((current) => [optimisticTodo, ...current]);
     setText("");
+    requestAnimationFrame(() => {
+      listRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    });
 
     if (storageMode === "local") {
       // In local mode, the temp ID is the real ID — just persist it
@@ -339,7 +343,7 @@ export function TodoPanel() {
         const nextTodos = current.map((todo) =>
           todo.id === tempId
             ? {
-                id: payload.todo.id,
+                id: todo.id,
                 serverId: payload.todo.id,
                 text: payload.todo.title,
                 done: payload.todo.isDone,
@@ -554,8 +558,10 @@ export function TodoPanel() {
         </motion.div>
       </motion.div>
 
-      <div
-        className="flex-1 min-h-0 space-y-2 overflow-auto"
+      <motion.div
+        ref={listRef}
+        layoutScroll
+        className="flex-1 min-h-0 space-y-2 overflow-auto [overflow-anchor:none]"
         onMouseLeave={() => setActiveTodoId(null)}
       >
        
@@ -563,7 +569,7 @@ export function TodoPanel() {
           {visibleTodos.map((t) => (
             <motion.div
               key={t.id}
-              layout
+              layout="position"
               initial={{ opacity: 0, y: 6, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -6, scale: 0.95 }}
@@ -571,7 +577,7 @@ export function TodoPanel() {
               onClick={() => setActiveTodoId(t.id)}
               className={`group flex items-center gap-2 rounded-lg px-3 py-2 transition hover:bg-secondary/30 ${
                 activeTodoId === t.id
-                  ? "bg-secondary/35 border-b border-primary/50 rounded-b-none"
+                  ? "bg-secondary/35 ring-1 ring-primary/40 ring-inset"
                   : "bg-secondary/20"
               }`}
             >
@@ -635,7 +641,7 @@ export function TodoPanel() {
             No tasks yet. Add one to get started.
           </div>
         ) : null}
-      </div>
+      </motion.div>
 
       {storageMode === "local" ? (
         <p className="mt-3 text-[11px] leading-4 text-muted-foreground/75">

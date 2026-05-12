@@ -44,6 +44,12 @@ function dayFromKey(dayKey: string): Date {
   return new Date(year, month - 1, day);
 }
 
+function addDaysToKey(dayKey: string, days: number): string {
+  const date = dayFromKey(dayKey);
+  date.setDate(date.getDate() + days);
+  return toLocalDateKey(date);
+}
+
 export function XpPage() {
   const [data, setData] = useState<XpResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -123,15 +129,18 @@ export function XpPage() {
   );
 
   const visibleDailyXp = useMemo(() => {
-    if (sortedDailyXp.length === 0) return [];
-
-    const todayIndex = sortedDailyXp.findIndex((entry) => entry.day === todayKey);
-    if (todayIndex === -1) return sortedDailyXp.slice(-7);
-
-    const start = Math.max(0, todayIndex - 1);
-    const end = Math.min(sortedDailyXp.length, todayIndex + 6);
-
-    return sortedDailyXp.slice(start, end);
+    const byDay = new Map(sortedDailyXp.map((entry) => [entry.day, entry]));
+    const keys = Array.from({ length: 7 }, (_, index) => addDaysToKey(todayKey, index - 1));
+    return keys.map((key) => {
+      const existing = byDay.get(key);
+      if (existing) return existing;
+      return {
+        day: key,
+        label: new Intl.DateTimeFormat("en", { weekday: "short" }).format(dayFromKey(key)),
+        xp: 0,
+        tasksCompleted: 0,
+      };
+    });
   }, [sortedDailyXp, todayKey]);
 
   const todayXp = sortedDailyXp.find((day) => day.day === todayKey)?.xp ?? 0;
