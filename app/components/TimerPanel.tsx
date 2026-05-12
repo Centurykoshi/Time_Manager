@@ -34,6 +34,18 @@ function fmt(seconds: number) {
   return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
 }
 
+function normalizeSoundUrl(url?: string | null) {
+  const value = (url || "").trim();
+  if (!value) return "/media/water.mp3";
+
+  const lower = value.toLowerCase();
+  if (lower.includes("night")) return "/media/night.mp3";
+  if (lower.includes("rain")) return "/media/rain.mp3";
+  if (lower.includes("water")) return "/media/water.mp3";
+
+  return value.startsWith("/") ? value : `/${value}`;
+}
+
 export function TimerPanel() {
   const [durationMin, setDurationMin] = useState<number>(25);
   const [remainingSec, setRemainingSec] = useState<number>(25 * 60);
@@ -68,7 +80,7 @@ export function TimerPanel() {
           const data = (await response.json()) as TimerSettingsResponse;
           setAnimationIcon(data.animationIcon);
           setSoundType(data.soundType);
-          if (data.soundUrl) setSoundUrl(data.soundUrl);
+          if (data.soundUrl) setSoundUrl(normalizeSoundUrl(data.soundUrl));
           if (data.favoriteMinutes) {
             setFavoriteMinutes(data.favoriteMinutes);
             setFavoriteInputValue(String(data.favoriteMinutes));
@@ -445,6 +457,11 @@ export function TimerPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    if (status !== "running" || shouldAudioPlayRef.current) return;
+    playTimerAnimation();
+  }, [status, soundUrl]);
+
   const R = 85;
   const C = 2 * Math.PI * R;
   const dashOffset = C * (1 - progress);
@@ -508,21 +525,31 @@ export function TimerPanel() {
       setAnimationParticles([]);
     }, 800);
 
-    if (!soundUrl) return;
+    const resolvedSoundUrl = normalizeSoundUrl(soundUrl);
+    if (!resolvedSoundUrl) return;
 
     const existingAudio = timerAudioRef.current;
     if (existingAudio) {
       existingAudio.pause();
       existingAudio.currentTime = 0;
-      existingAudio.src = soundUrl;
+      existingAudio.src = resolvedSoundUrl;
     } else {
-      timerAudioRef.current = new Audio(soundUrl);
+      timerAudioRef.current = new Audio(resolvedSoundUrl);
     }
 
     const audio = timerAudioRef.current;
     if (!audio) return;
 
     audio.loop = true;
+    audio.onerror = () => {
+      if (audio.src.includes("/media/water.mp3")) return;
+      audio.src = "/media/water.mp3";
+      if (shouldAudioPlayRef.current) {
+        void audio.play().catch(() => {
+          // Silent fail
+        });
+      }
+    };
     audio.onended = () => {
       // Fallback loop for browsers/devices where loop can be inconsistent.
       if (!shouldAudioPlayRef.current) return;
