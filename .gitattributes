@@ -1,0 +1,4 @@
+public/media/water.mp3 filter=lfs diff=lfs merge=lfs -text
+public/media/night.mp3 filter=lfs diff=lfs merge=lfs -text
+public/media/rain.mp3 filter=lfs diff=lfs merge=lfs -text
+*.mp3 filter=lfs diff=lfs merge=lfs -text

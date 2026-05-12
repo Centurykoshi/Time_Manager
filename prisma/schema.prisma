@@ -1,0 +1,303 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TodoPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TodoDifficulty {
+  EASY
+  MEDIUM
+  HARD
+  BOSS
+}
+
+enum StudySessionSource {
+  TIMER
+  MANUAL
+  IMPORTED
+}
+
+enum GoalCadence {
+  WEEKLY
+  MONTHLY
+  YEARLY
+  ALL_TIME
+}
+
+
+
+model User {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  image         String?
+
+  name      String
+  email     String @unique
+  emailVerified    Boolean   @default(false)
+  timezone  String?
+
+  todos               TodoItem[]
+  todoTags            TodoTag[]
+  studySessions       StudySession[]
+  dailyStudySummaries DailyStudySummary[]
+  weeklyStudySummaries WeeklyStudySummary[]
+  goals               Goal[]
+  goalGroups          GoalGroup[]
+  timerSettings       TimerSettings?
+  accounts  Account[]
+  sessions  Session[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model TodoItem {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title          String
+  description    String?  @db.Text
+  isDone         Boolean  @default(false)
+  priority       TodoPriority @default(MEDIUM)
+  difficulty     TodoDifficulty @default(EASY)
+  estimatedMinutes Int?
+  sortOrder      Int      @default(0)
+  dueAt          DateTime?
+  completedAt    DateTime?
+  xpEarned       Int      @default(0)
+
+  tagId String?
+  tag   TodoTag? @relation(fields: [tagId], references: [id], onDelete: SetNull)
+
+  goalId String?
+  goal   Goal?    @relation("goalXpAdjustments", fields: [goalId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isDone])
+  @@index([userId, dueAt])
+  @@index([userId, createdAt])
+  @@map("todo_items")
+}
+
+model TodoTag {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name      String
+  slug      String
+  isBuiltin Boolean  @default(false)
+  goalXp    Int      @default(10)
+
+  userId String
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  todos  TodoItem[]
+  goals  Goal[]
+
+  @@unique([userId, slug])
+  @@index([userId, isBuiltin])
+  @@map("todo_tags")
+}
+
+model StudySession {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  startedAt DateTime
+  endedAt   DateTime?
+  durationMinutes Int
+  subject   String?
+  notes     String?  @db.Text
+  source    StudySessionSource @default(TIMER)
+
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@index([userId, source])
+  @@map("study_sessions")
+}
+
+model Account {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, providerId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  identifier String
+  value      String
+  expiresAt  DateTime
+
+  @@unique([identifier, value])
+  @@index([expiresAt])
+  @@map("verifications")
+}
+
+
+model DailyStudySummary {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  day             DateTime @db.Date
+  studiedMinutes   Int      @default(0)
+  focusSessions    Int      @default(0)
+  todosCompleted   Int      @default(0)
+  todosPlanned     Int      @default(0)
+  note             String?  @db.Text
+
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, day])
+  @@index([userId, day])
+  @@map("daily_study_summaries")
+}
+
+model WeeklyStudySummary {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  weekStart       DateTime @db.Date
+  weekEnd         DateTime @db.Date
+  studiedMinutes  Int      @default(0)
+  focusSessions   Int      @default(0)
+  todosCompleted   Int      @default(0)
+  studyDays       Int      @default(0)
+  note            String?  @db.Text
+
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, weekStart])
+  @@index([userId, weekStart])
+  @@map("weekly_study_summaries")
+}
+
+model Goal {
+  id           String      @id @default(cuid())
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  title        String
+  description  String?     @db.Text
+  cadence      GoalCadence @default(WEEKLY)
+  targetValue   Int
+  currentValue  Int         @default(0)
+  unit         String      @default("sessions")
+  isArchived   Boolean     @default(false)
+
+  goalGroupId  String? 
+  goalGroup    GoalGroup? @relation(fields: [goalGroupId], references: [id], onDelete: SetNull)
+
+  goalTagId    String?
+  goalTag      TodoTag?    @relation(fields: [goalTagId], references: [id], onDelete: SetNull)
+
+  xpAdjustments TodoItem[]  @relation("goalXpAdjustments")
+
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, cadence])
+  @@index([userId, isArchived])
+  @@index([userId, goalTagId])
+  @@map("goals")
+}
+
+model GoalGroup {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  name       String
+  slug       String
+  type       String // 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'ALL_TIME'
+
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goals      Goal[]
+
+  @@unique([userId, slug])
+  @@map("goal_groups")
+}
+
+
+model Session {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  expiresAt      DateTime
+  token          String   @unique
+  ipAddress      String?
+  userAgent      String?
+  impersonatedBy String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+
+model TimerSettings {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  animationIcon String  @default("Zap")
+  soundType     String  @default("wind")
+  soundUrl      String?
+  favoriteMinutes Int     @default(25)
+  latestMinutes   Int     @default(25)
+  timerStatus         String   @default("IDLE")
+  timerDurationSec    Int      @default(1500)
+  timerRemainingSec   Int      @default(1500)
+  timerEndsAt         DateTime?
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("timer_settings")
+}

@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Manager Prototype</title>
+    <style>
+        /* CSS Variables & Global Styles */
+        :root {
+            --bg-dark: #0f172a;
+            --surface-dark: rgba(30, 41, 59, 0.7);
+            --primary: #8b5cf6;
+            --primary-hover: #7c3aed;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+        
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Glassmorphism Utilities */
+        .glass {
+            background: var(--surface-dark);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+        }
+
+        /* Layout Structure */
+        #sidebar {
+            width: 250px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            border-right: 1px solid var(--glass-border);
+        }
+
+        #sidebar h1 { font-size: 20px; margin-bottom: 24px; color: var(--primary); }
+
+        .nav-btn {
+            background: transparent;
+            color: var(--text-muted);
+            border: none;
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .nav-btn:hover { background: rgba(255,255,255,0.05); color: var(--text-main); }
+        .nav-btn.active { background: var(--primary); color: white; }
+
+        main { flex: 1; padding: 32px; overflow-y: auto; }
+        
+        .tab-content { display: none; height: 100%; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s ease; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Timer Tab Grid Layout */
+        .timer-layout {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 24px;
+            height: 100%;
+        }
+
+        /* Timer & Clock Area */
+        .clock-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            position: relative;
+        }
+
+        .clock-wrapper {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            margin-bottom: 32px;
+            /* Default animation background */
+            background: radial-gradient(circle, rgba(139,92,246,0.1) 0%, transparent 70%);
+        }
+
+        /* Themed Animations */
+        .anim-nebula { animation: pulse 4s infinite alternate; }
+        .anim-ocean { background: radial-gradient(circle, rgba(14,165,233,0.2) 0%, transparent 70%); animation: wave 5s infinite linear; }
+        
+        @keyframes pulse { 0% { transform: scale(1); box-shadow: 0 0 20px var(--primary); } 100% { transform: scale(1.05); box-shadow: 0 0 60px var(--primary); } }
+        @keyframes wave { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .time-display { font-size: 64px; font-weight: bold; z-index: 2; font-variant-numeric: tabular-nums; }
+        
+        svg.progress-ring { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+        .progress-ring__circle {
+            stroke: var(--primary);
+            stroke-width: 8;
+            fill: transparent;
+            stroke-dasharray: 880; /* roughly 2 * pi * 140 */
+            stroke-dashoffset: 0;
+            transition: stroke-dashoffset 1s linear;
+            stroke-linecap: round;
+        }
+
+        /* Timer Controls */
+        .controls { display: flex; gap: 16px; margin-bottom: 32px; }
+        button {
+            padding: 10px 20px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer;
+            background: var(--surface-dark); color: var(--text-main); border: 1px solid var(--glass-border);
+        }
+        button:hover { background: rgba(255,255,255,0.1); }
+        button.btn-primary { background: var(--primary); color: white; border: none; }
+        button.btn-primary:hover { background: var(--primary-hover); }
+
+        /* Animation Selector */
+        .anim-selector { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+        .anim-card {
+            padding: 16px; text-align: center; border-radius: 12px; cursor: pointer;
+            border: 1px solid var(--glass-border); background: rgba(0,0,0,0.2);
+        }
+        .anim-card.active { border-color: var(--primary); background: rgba(139,92,246,0.2); }
+        .anim-card.locked { opacity: 0.5; cursor: not-allowed; }
+        .locked-text { font-size: 12px; color: var(--text-muted); display: block; margin-top: 4px; }
+
+        /* Task Panel */
+        .task-panel { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+        .current-task {
+            background: rgba(139,92,246,0.15); border: 1px solid var(--primary);
+            padding: 16px; border-radius: 12px;
+        }
+        .task-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-bottom: 8px;
+        }
+
+        /* Mock specific tabs */
+        .mock-header { margin-bottom: 24px; font-size: 24px; }
+        .mock-card { padding: 20px; margin-bottom: 16px; }
+        .progress-bar { width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; margin-top: 12px; overflow: hidden;}
+        .progress-fill { height: 100%; background: var(--primary); width: 60%; }
+
+    </style>
+</head>
+<body>
+
+    <!-- Sidebar Navigation -->
+    <nav id="sidebar" class="glass">
+        <h1>⏳ Time Manager</h1>
+        <button class="nav-btn" onclick="switchTab('today')">📝 Today</button>
+        <button class="nav-btn" onclick="switchTab('goals')">🎯 Goals</button>
+        <button class="nav-btn active" onclick="switchTab('timer')">⏱️ Timer</button>
+        <button class="nav-btn" onclick="switchTab('insights')">📊 Insights</button>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main>
+        <!-- 1. TODAY TAB -->
+        <section id="tab-today" class="tab-content">
+            <h2 class="mock-header">Today's Queue</h2>
+            <div class="glass mock-card">
+                <input type="text" placeholder="+ Quick Add Task..." style="width:100%; padding:12px; border-radius:8px; border:none; background:rgba(0,0,0,0.2); color:white; margin-bottom: 16px;">
+                <div class="task-item"><span>☐ Finalize API endpoints</span> <button>Drag</button></div>
+                <div class="task-item"><span>☐ Write documentation</span> <button>Drag</button></div>
+            </div>
+            <h3 style="margin:24px 0 12px; color:var(--text-muted);">Suggested from Goals</h3>
+            <div class="glass mock-card" style="opacity: 0.8;">
+                <div class="task-item"><span>☐ Read 1 chapter of Clean Code</span> <button>+ Add to Today</button></div>
+            </div>
+        </section>
+
+        <!-- 2. GOALS TAB -->
+        <section id="tab-goals" class="tab-content">
+            <h2 class="mock-header">Goals</h2>
+            <div style="display:flex; gap:10px; margin-bottom:20px;">
+                <button class="btn-primary">Weekly</button>
+                <button>Monthly</button>
+            </div>
+            <div class="glass mock-card">
+                <h3>Launch MVP Prototype</h3>
+                <div class="progress-bar"><div class="progress-fill" style="width: 75%;"></div></div>
+                <p style="color:var(--text-muted); font-size:12px; margin-top:8px;">75% Complete • <a href="#" style="color:var(--primary)">Break into tasks</a></p>
+            </div>
+            <div class="glass mock-card">
+                <h3>Workout 4 times</h3>
+                <div class="progress-bar"><div class="progress-fill" style="width: 25%;"></div></div>
+                <p style="color:var(--text-muted); font-size:12px; margin-top:8px;">25% Complete</p>
+            </div>
+        </section>
+
+        <!-- 3. TIMER TAB (The Main Workspace) -->
+        <section id="tab-timer" class="tab-content active">
+            <div class="timer-layout">
+                <!-- Left: Clock & Animations -->
+                <div class="glass clock-container">
+                    
+                    <div style="margin-bottom: 24px; display:flex; gap:8px;">
+                        <button onclick="setTimerMode(25)" class="btn-primary" id="mode-pomo">Pomodoro</button>
+                        <button onclick="setTimerMode(5)" id="mode-short">Short Break</button>
+                        <button onclick="setTimerMode(15)" id="mode-long">Long Break</button>
+                    </div>
+
+                    <div class="clock-wrapper anim-nebula" id="clock-anim">
+                        <svg class="progress-ring" width="300" height="300">
+                            <circle class="progress-ring__circle" stroke="white" cx="150" cy="150" r="140" id="progress-circle"/>
+                        </svg>
+                        <div class="time-display" id="time-display">25:00</div>
+                    </div>
+
+                    <div class="controls">
+                        <button class="btn-primary" id="start-btn" onclick="toggleTimer()">Start Focus</button>
+                        <button onclick="resetTimer()">Reset</button>
+                    </div>
+
+                    <div style="width:100%; max-width:400px; margin-top: 16px;">
+                        <h4 style="margin-bottom:12px; font-size:14px; color:var(--text-muted);">Themes / Animations</h4>
+                        <div class="anim-selector">
+                            <div class="anim-card active" onclick="setAnimation('nebula', this)">🌌 Nebula</div>
+                            <div class="anim-card" onclick="setAnimation('ocean', this)">🌊 Ocean</div>
+                            <div class="anim-card locked">🔥 Campfire <span class="locked-text">🔒 Reach Lvl 3</span></div>
+                            <div class="anim-card locked">⚡ Lightning <span class="locked-text">🔒 10 Sessions</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Task List -->
+                <div class="glass task-panel">
+                    <h3>Today's Focus</h3>
+                    
+                    <div class="current-task">
+                        <span style="font-size:12px; color:var(--primary); font-weight:bold;">CURRENT TASK</span>
+                        <h4 style="margin: 8px 0;" id="active-task-title">Draft application architecture</h4>
+                        <button style="width:100%; margin-top:8px;" onclick="markDone()">Mark Done</button>
+                    </div>
+
+                    <div style="margin-top:16px;">
+                        <h4 style="font-size:14px; color:var(--text-muted); margin-bottom:12px;">Up Next</h4>
+                        <div class="task-item">
+                            <span>Setup Database</span>
+                            <button onclick="focusTask('Setup Database')">Focus</button>
+                        </div>
+                        <div class="task-item">
+                            <span>Design Logo</span>
+                            <button onclick="focusTask('Design Logo')">Focus</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. INSIGHTS TAB -->
+        <section id="tab-insights" class="tab-content">
+            <h2 class="mock-header">Insights & Progress</h2>
+            <div style="display:flex; gap:20px;">
+                <div class="glass mock-card" style="flex:1">
+                    <h1 style="color:var(--primary); font-size:36px;">14h</h1>
+                    <p style="color:var(--text-muted);">Focus time this week</p>
+                </div>
+                <div class="glass mock-card" style="flex:1">
+                    <h1 style="color:var(--primary); font-size:36px;">Lvl 2</h1>
+                    <p style="color:var(--text-muted);">200 XP to next unlock</p>
+                    <div class="progress-bar"><div class="progress-fill" style="width: 45%;"></div></div>
+                </div>
+            </div>
+            <div class="glass mock-card" style="height: 200px; display:flex; align-items:center; justify-content:center;">
+                <p style="color:var(--text-muted);">[ Mock Chart: Focus time by day bar graph ]</p>
+            </div>
+        </section>
+    </main>
+
+    <!-- Interactive Logic -->
+    <script>
+        // --- Navigation Logic ---
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById('tab-' + tabId).classList.add('active');
+            event.currentTarget.classList.add('active');
+        }
+
+        // --- Timer Logic ---
+        let timeRemaining = 25 * 60; // default 25 mins
+        let totalDuration = 25 * 60;
+        let timerInterval = null;
+        let isRunning = false;
+
+        const timeDisplay = document.getElementById('time-display');
+        const startBtn = document.getElementById('start-btn');
+        const circle = document.getElementById('progress-circle');
+        const circumference = 2 * Math.PI * 140; // r=140 from SVG
+
+        function updateDisplay() {
+            let minutes = Math.floor(timeRemaining / 60);
+            let seconds = timeRemaining % 60;
+            timeDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            // Update circular progress bar
+            let offset = circumference - (timeRemaining / totalDuration) * circumference;
+            circle.style.strokeDashoffset = offset;
+        }
+
+        function toggleTimer() {
+            if (isRunning) {
+                clearInterval(timerInterval);
+                startBtn.textContent = "Resume";
+                isRunning = false;
+                // Pause animation
+                document.getElementById('clock-anim').style.animationPlayState = 'paused';
+            } else {
+                startBtn.textContent = "Pause";
+                isRunning = true;
+                document.getElementById('clock-anim').style.animationPlayState = 'running';
+                
+                timerInterval = setInterval(() => {
+                    if (timeRemaining > 0) {
+                        timeRemaining--;
+                        updateDisplay();
+                    } else {
+                        clearInterval(timerInterval);
+                        alert("Session complete! +50 XP");
+                        resetTimer();
+                    }
+                }, 1000);
+            }
+        }
+
+        function resetTimer() {
+            clearInterval(timerInterval);
+            isRunning = false;
+            timeRemaining = totalDuration;
+            startBtn.textContent = "Start Focus";
+            document.getElementById('clock-anim').style.animationPlayState = 'running';
+            updateDisplay();
+        }
+
+        function setTimerMode(minutes) {
+            totalDuration = minutes * 60;
+            timeRemaining = totalDuration;
+            resetTimer();
+            
+            // UI Button styling reset
+            document.getElementById('mode-pomo').className = '';
+            document.getElementById('mode-short').className = '';
+            document.getElementById('mode-long').className = '';
+            event.currentTarget.className = 'btn-primary';
+        }
+
+        // --- Animation Selector Logic ---
+        function setAnimation(type, element) {
+            if (element.classList.contains('locked')) return;
+            
+            // Update active state in grid
+            document.querySelectorAll('.anim-card').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+
+            // Apply to clock
+            const clock = document.getElementById('clock-anim');
+            clock.className = 'clock-wrapper'; // reset classes
+            clock.classList.add('anim-' + type);
+        }
+
+        // --- Task Panel Logic ---
+        function focusTask(taskName) {
+            document.getElementById('active-task-title').textContent = taskName;
+        }
+
+        function markDone() {
+            document.getElementById('active-task-title').innerHTML = "<del style='color:var(--text-muted)'>" + document.getElementById('active-task-title').textContent + "</del>";
+        }
+
+        // Initialize display
+        updateDisplay();
+    </script>
+</body>
+</html>
