@@ -740,6 +740,8 @@ export function TimerPanel() {
                 return;
               }
 
+
+              
               applyDuration(item.dur);
             };
             return (
