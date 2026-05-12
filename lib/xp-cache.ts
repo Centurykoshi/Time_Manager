@@ -1,4 +1,5 @@
 "use client";
+import { getTimeZoneHeaders } from "@/lib/timezone";
 
 export type XpResponse = {
   summary: {
@@ -58,7 +59,9 @@ export async function loadRemoteXp(force = false) {
   }
 
   const request = (async () => {
-    const response = await fetch("/api/xp");
+    const response = await fetch("/api/xp", {
+      headers: getTimeZoneHeaders(),
+    });
     if (!response.ok) {
       throw new Error("Failed to load XP data.");
     }

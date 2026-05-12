@@ -19,6 +19,7 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "./components/ui/s
 
 import { NotificationPermissionBanner } from "./components/NotificationPermissionBanner";
 import { authClient } from "@/lib/auth-client";
+import { getTimeZoneHeaders } from "@/lib/timezone";
 
 type DashboardSnapshot = {
   todosSummary: { total: number; done: number; open: number };
@@ -102,7 +103,9 @@ export default function Home() {
 
     const load = async () => {
       try {
-        const response = await fetch("/api/dashboard");
+        const response = await fetch("/api/dashboard", {
+          headers: getTimeZoneHeaders(),
+        });
         if (!response.ok) return;
         const data = (await response.json()) as DashboardSnapshot;
         if (active) setSnapshot(data);

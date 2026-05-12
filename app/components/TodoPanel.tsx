@@ -9,6 +9,7 @@ import { MoreVertical } from "lucide-react";
 import { toast } from "sonner";
 import { readLocalTodos, writeLocalTodos } from "@/lib/local-todos";
 import { getTodoCache, getTodoCacheSource, loadRemoteTodos, setTodoCache, subscribeTodoCache, type SharedTodo } from "@/lib/todo-cache";
+import { getTimeZoneHeaders } from "@/lib/timezone";
 
 type Difficulty = "EASY" | "MEDIUM" | "HARD" | "BOSS";
 
@@ -316,7 +317,7 @@ export function TodoPanel() {
     try {
       const response = await fetch("/api/todos", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getTimeZoneHeaders() },
         body: JSON.stringify({ title: trimmed }),
       });
 
@@ -385,7 +386,7 @@ export function TodoPanel() {
     try {
       const response = await fetch(`/api/todos/${persistedId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getTimeZoneHeaders() },
         body: JSON.stringify({ isDone: nextDone, difficulty: target.difficulty }),
       });
 
@@ -456,7 +457,7 @@ export function TodoPanel() {
     try {
       const response = await fetch(`/api/todos/${persistedId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getTimeZoneHeaders() },
         body: JSON.stringify({ difficulty }),
       });
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser, recordStudySession } from "@/lib/dashboard";
+import { getTimeZoneFromHeaders } from "@/lib/timezone";
 
 export async function GET() {
   try {
@@ -18,6 +19,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const timeZone = getTimeZoneFromHeaders(request.headers);
     const body = (await request.json()) as {
       durationMinutes?: number;
       startedAt?: string;
@@ -38,6 +40,7 @@ export async function POST(request: NextRequest) {
       subject: body.subject ?? null,
       notes: body.notes ?? null,
       source: body.source ?? "TIMER",
+      timeZone,
     });
 
     return NextResponse.json({ session }, { status: 201 });

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { addLocalDays, getCurrentUser, toLocalDateOnly } from "@/lib/dashboard";
 import { getTaskXp, MAX_DAILY_XP } from "@/lib/xp";
+import { isValidTimeZone, TIMEZONE_HEADER, toDateKeyInTimeZone } from "@/lib/timezone";
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -23,6 +23,8 @@ type TodoUpdateData = {
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     const user = await getCurrentUser();
+  const requestedTimeZone = request.headers.get(TIMEZONE_HEADER) ?? "UTC";
+  const timeZone = isValidTimeZone(requestedTimeZone) ? requestedTimeZone : "UTC";
   const { id } = await params;
   const body = (await request.json()) as {
     title?: string;
@@ -57,42 +59,51 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       const difficulty = body.difficulty ?? (currentTodo.difficulty as "EASY" | "MEDIUM" | "HARD" | "BOSS");
 
       const now = new Date();
-      const dayStart = toLocalDateOnly(now);
-      const dayEnd = addLocalDays(dayStart, 1);
+      const todayKey = toDateKeyInTimeZone(now, timeZone);
+      const lookbackStart = addLocalDays(toLocalDateOnly(now), -2);
+      const lookaheadEnd = addLocalDays(toLocalDateOnly(now), 2);
 
-      // Count and sum today's completed todos in one grouped query.
-      const [todoStats, sessionXpTodayRows] = await Promise.all([
-        prisma.todoItem.groupBy({
-          by: ["difficulty"],
+      // Pull a narrow window, then bucket by the user's timezone day key.
+      const [recentCompletedTodos, recentStudySessions] = await Promise.all([
+        prisma.todoItem.findMany({
           where: {
             userId: user.id,
             isDone: true,
             completedAt: {
-              gte: dayStart,
-              lt: dayEnd,
+              gte: lookbackStart,
+              lt: lookaheadEnd,
             },
           },
-          _count: {
-            _all: true,
-          },
-          _sum: {
+          select: {
+            difficulty: true,
             xpEarned: true,
+            completedAt: true,
           },
         }),
-        prisma.$queryRaw<Array<{ session_xp: bigint | number | null }>>(Prisma.sql`
-          SELECT COALESCE(SUM(FLOOR("durationMinutes" / 10.0)), 0) AS session_xp
-          FROM "study_sessions"
-          WHERE "userId" = ${user.id}
-            AND "startedAt" >= ${dayStart}
-            AND "startedAt" < ${dayEnd}
-            AND "durationMinutes" > 0
-        `),
+        prisma.studySession.findMany({
+          where: {
+            userId: user.id,
+            startedAt: {
+              gte: lookbackStart,
+              lt: lookaheadEnd,
+            },
+            durationMinutes: { gt: 0 },
+          },
+          select: {
+            startedAt: true,
+            durationMinutes: true,
+          },
+        }),
       ]);
 
-      const completedCount = todoStats.find((entry) => entry.difficulty === difficulty)?._count._all ?? 0;
-      const taskXpToday = todoStats.reduce((sum, entry) => sum + (entry._sum.xpEarned ?? 0), 0);
-
-      const sessionXpToday = Number(sessionXpTodayRows[0]?.session_xp ?? 0);
+      const todosToday = recentCompletedTodos.filter(
+        (entry) => entry.completedAt && toDateKeyInTimeZone(new Date(entry.completedAt), timeZone) === todayKey,
+      );
+      const completedCount = todosToday.filter((entry) => entry.difficulty === difficulty).length;
+      const taskXpToday = todosToday.reduce((sum, entry) => sum + (entry.xpEarned ?? 0), 0);
+      const sessionXpToday = recentStudySessions
+        .filter((entry) => toDateKeyInTimeZone(new Date(entry.startedAt), timeZone) === todayKey)
+        .reduce((sum, entry) => sum + Math.floor(entry.durationMinutes / 10), 0);
       const consumedToday = taskXpToday + sessionXpToday;
       const remainingToday = Math.max(0, MAX_DAILY_XP - consumedToday);
       const requestedTaskXp = getTaskXp(difficulty, completedCount);

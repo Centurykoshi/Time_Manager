@@ -6,6 +6,7 @@ import { Play, Pause, RotateCcw, Heart, History } from "lucide-react";
 import { Button } from "./ui/button";
 import { TimerCustomizer } from "./TimerCustomizer";
 import { notifyTimerComplete } from "@/lib/notifications";
+import { getTimeZoneHeaders } from "@/lib/timezone";
 
 type TimerStatus = "idle" | "running" | "paused" | "ended";
 
@@ -241,6 +242,7 @@ export function TimerPanel() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...getTimeZoneHeaders(),
       },
       body: JSON.stringify({
         durationMinutes,

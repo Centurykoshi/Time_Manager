@@ -5,6 +5,7 @@ import { Prisma } from "@/generated/prisma";
 import { prisma } from "./prisma";
 import { auth } from "./auth";
 import { getXpLevel, MAX_DAILY_XP } from "./xp";
+import { addDaysToDateKey, dateFromKey, getWeekdayInTimeZone, startOfWeekKeyInTimeZone, toDateKeyInTimeZone } from "./timezone";
 
 export type DashboardSnapshot = {
   todosSummary: {
@@ -118,29 +119,30 @@ function hasActivity(entry?: { studiedMinutes: number; focusSessions: number; to
   return Boolean(entry && (entry.studiedMinutes > 0 || entry.focusSessions > 0 || (entry.todosCompleted ?? 0) > 0));
 }
 
-function getStreakState(series: Array<{ day: Date; studiedMinutes: number; focusSessions: number; todosCompleted: number }>, today: Date) {
-  const byDay = new Map(series.map((entry) => [entry.day.toISOString().slice(0, 10), entry]));
-  const todayKey = today.toISOString().slice(0, 10);
-  const referenceDay = hasActivity(byDay.get(todayKey)) ? today : addUtcDays(today, -1);
+function getStreakState(
+  seriesByKey: Map<string, { studiedMinutes: number; focusSessions: number; todosCompleted: number }>,
+  todayKey: string,
+  timeZone: string,
+) {
+  const referenceKey = hasActivity(seriesByKey.get(todayKey)) ? todayKey : addDaysToDateKey(todayKey, -1, timeZone);
   let streak = 0;
-  let lastActiveDay: Date | null = null;
+  let lastActiveKey: string | null = null;
 
   for (let offset = 0; offset < 3650; offset += 1) {
-    const cursor = addUtcDays(referenceDay, -offset);
-    const key = cursor.toISOString().slice(0, 10);
-    const entry = byDay.get(key);
+    const key = addDaysToDateKey(referenceKey, -offset, timeZone);
+    const entry = seriesByKey.get(key);
     if (!hasActivity(entry)) {
       break;
     }
     streak += 1;
-    lastActiveDay = cursor;
+    lastActiveKey = key;
   }
 
   return {
     streakDays: streak,
-    streakBreakAt: lastActiveDay
+    streakBreakAt: lastActiveKey
       ? (() => {
-          const breakAt = addUtcDays(lastActiveDay, 1);
+          const breakAt = dateFromKey(addDaysToDateKey(lastActiveKey, 1, timeZone));
           breakAt.setUTCHours(23, 59, 59, 999);
           return breakAt.toISOString();
         })()
@@ -148,65 +150,46 @@ function getStreakState(series: Array<{ day: Date; studiedMinutes: number; focus
   };
 }
 
-export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
+export async function getDashboardSnapshot(timeZone = "UTC"): Promise<DashboardSnapshot> {
   const user = await getCurrentUser();
-  const today = toUtcDateOnly(new Date());
-  const weekStart = startOfUtcWeek(today);
-  const weekEnd = addUtcDays(weekStart, 6);
-  const tomorrow = addUtcDays(today, 1);
+  const now = new Date();
+  const todayKey = toDateKeyInTimeZone(now, timeZone);
+  const weekStartKey = startOfWeekKeyInTimeZone(now, timeZone);
+  const weekEndKey = addDaysToDateKey(weekStartKey, 6, timeZone);
+  const lookbackStart = addLocalDays(toLocalDateOnly(now), -35);
+  const lookaheadEnd = addLocalDays(toLocalDateOnly(now), 2);
 
   const [
     todoTotal,
     todoDone,
-    todosTodayDone,
-    todosTodayTotal,
-    todaySummaryRow,
-    weekSummaryRow,
+    allTodos,
+    allStudySessions,
     allDailySummaries,
     goalTotal,
     xpRows,
   ] = await Promise.all([
     prisma.todoItem.count({ where: { userId: user.id } }),
     prisma.todoItem.count({ where: { userId: user.id, isDone: true } }),
-    prisma.todoItem.count({
-      where: {
-        userId: user.id,
-        createdAt: {
-          gte: today,
-          lt: tomorrow,
-        },
+    prisma.todoItem.findMany({
+      where: { userId: user.id },
+      select: {
+        createdAt: true,
         isDone: true,
       },
     }),
-    prisma.todoItem.count({
+    prisma.studySession.findMany({
       where: {
         userId: user.id,
-        createdAt: {
-          gte: today,
-          lt: tomorrow,
-        },
+        startedAt: { gte: lookbackStart, lt: lookaheadEnd },
+        durationMinutes: { gt: 0 },
       },
-    }),
-    prisma.dailyStudySummary.findFirst({
-      where: { userId: user.id, day: today },
       select: {
-        studiedMinutes: true,
-        focusSessions: true,
-        todosCompleted: true,
-        todosPlanned: true,
-      },
-    }),
-    prisma.weeklyStudySummary.findFirst({
-      where: { userId: user.id, weekStart },
-      select: {
-        studiedMinutes: true,
-        focusSessions: true,
-        todosCompleted: true,
-        studyDays: true,
+        startedAt: true,
+        durationMinutes: true,
       },
     }),
     prisma.dailyStudySummary.findMany({
-      where: { userId: user.id, day: { lte: today } },
+      where: { userId: user.id, day: { gte: lookbackStart, lt: lookaheadEnd } },
       orderBy: { day: "asc" },
       select: {
         day: true,
@@ -251,42 +234,53 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   
 
 
-  const dailyMap = new Map(allDailySummaries.map((entry) => [entry.day.toISOString().slice(0, 10), entry]));
+  const summaryByDay = new Map<string, { studiedMinutes: number; focusSessions: number; todosCompleted: number }>();
+  for (const entry of allDailySummaries) {
+    const key = toDateKeyInTimeZone(new Date(entry.day), timeZone);
+    const current = summaryByDay.get(key) ?? { studiedMinutes: 0, focusSessions: 0, todosCompleted: 0 };
+    current.studiedMinutes += entry.studiedMinutes;
+    current.focusSessions += entry.focusSessions;
+    current.todosCompleted += entry.todosCompleted;
+    summaryByDay.set(key, current);
+  }
+
+  const todosTodayTotal = allTodos.filter((todo) => toDateKeyInTimeZone(new Date(todo.createdAt), timeZone) === todayKey).length;
+  const todosTodayDone = allTodos.filter((todo) => todo.isDone && toDateKeyInTimeZone(new Date(todo.createdAt), timeZone) === todayKey).length;
+
   const dailySeries = Array.from({ length: 7 }, (_, index) => {
-    const day = addUtcDays(weekStart, index);
-    const key = day.toISOString().slice(0, 10);
-    const entry = dailyMap.get(key);
+    const key = addDaysToDateKey(weekStartKey, index, timeZone);
+    const entry = summaryByDay.get(key);
     return {
       day: key,
-      label: formatDayLabel(day),
+      label: getWeekdayInTimeZone(dateFromKey(key), timeZone),
       studiedMinutes: entry?.studiedMinutes ?? 0,
       focusSessions: entry?.focusSessions ?? 0,
     };
   });
 
-  const streakState = getStreakState(
-    allDailySummaries.map((entry) => ({
-      day: entry.day,
-      studiedMinutes: entry.studiedMinutes,
-      focusSessions: entry.focusSessions,
-      todosCompleted: entry.todosCompleted,
-    })),
-    today,
-  );
+  const streakState = getStreakState(summaryByDay, todayKey, timeZone);
 
-  const todaySummary = todaySummaryRow ?? {
-    studiedMinutes: 0,
-    focusSessions: 0,
+  const todaySummaryRow = summaryByDay.get(todayKey);
+  const todaySummary = {
+    studiedMinutes: todaySummaryRow?.studiedMinutes ?? 0,
+    focusSessions: todaySummaryRow?.focusSessions ?? 0,
     todosCompleted: todosTodayDone,
     todosPlanned: todosTodayTotal,
   };
 
-  const weekSummary = weekSummaryRow ?? {
-    studiedMinutes: 0,
-    focusSessions: 0,
-    todosCompleted: 0,
-    studyDays: 0,
-  };
+  const weekKeys = Array.from({ length: 7 }, (_, index) => addDaysToDateKey(weekStartKey, index, timeZone));
+  const weekSummary = weekKeys.reduce(
+    (acc, key) => {
+      const row = summaryByDay.get(key);
+      if (!row) return acc;
+      acc.studiedMinutes += row.studiedMinutes;
+      acc.focusSessions += row.focusSessions;
+      acc.todosCompleted += row.todosCompleted;
+      if (row.studiedMinutes > 0 || row.focusSessions > 0) acc.studyDays += 1;
+      return acc;
+    },
+    { studiedMinutes: 0, focusSessions: 0, todosCompleted: 0, studyDays: 0 },
+  );
 
   const totalXpRaw = xpRows[0]?.total_xp ?? 0;
   const totalXp = Number(totalXpRaw);
@@ -312,8 +306,8 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     },
     weekSummary: {
       ...weekSummary,
-      weekStart: weekStart.toISOString().slice(0, 10),
-      weekEnd: weekEnd.toISOString().slice(0, 10),
+      weekStart: weekStartKey,
+      weekEnd: weekEndKey,
       todosPlanned: todoTotal,
     },
     streakDays: streakState.streakDays,
@@ -329,14 +323,19 @@ export async function recordStudySession(input: {
   subject?: string | null;
   notes?: string | null;
   source?: "TIMER" | "MANUAL" | "IMPORTED";
+  timeZone?: string;
 }) {
   const user = await getCurrentUser();
   const startedAt = input.startedAt ?? new Date();
   const endedAt = input.endedAt ?? new Date();
   const durationMinutes = Math.max(1, Math.round(input.durationMinutes));
-  const day = toUtcDateOnly(startedAt);
-  const weekStart = startOfUtcWeek(startedAt);
-  const weekEnd = addUtcDays(weekStart, 6);
+  const timeZone = input.timeZone ?? "UTC";
+  const dayKey = toDateKeyInTimeZone(startedAt, timeZone);
+  const weekStartKey = startOfWeekKeyInTimeZone(startedAt, timeZone);
+  const weekEndKey = addDaysToDateKey(weekStartKey, 6, timeZone);
+  const day = dateFromKey(dayKey);
+  const weekStart = dateFromKey(weekStartKey);
+  const weekEnd = dateFromKey(weekEndKey);
 
   const [session, todoTotals] = await Promise.all([
     prisma.studySession.create({

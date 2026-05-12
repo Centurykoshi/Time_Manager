@@ -9,6 +9,7 @@ import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import { readLocalTodos, writeLocalTodos } from "@/lib/local-todos";
 import { getTodoCache, getTodoCacheSource, loadRemoteTodos, setTodoCache, subscribeTodoCache, type SharedTodo } from "@/lib/todo-cache";
+import { getTimeZoneHeaders } from "@/lib/timezone";
 
 type Difficulty = "EASY" | "MEDIUM" | "HARD" | "BOSS";
 
@@ -246,7 +247,7 @@ export function TodosPage() {
 
       const response = await fetch("/api/todos", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getTimeZoneHeaders() },
         body: JSON.stringify({ title: newTodoTitle.trim() }),
       });
 
@@ -281,7 +282,7 @@ export function TodosPage() {
     try {
       const response = await fetch(`/api/todos/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getTimeZoneHeaders() },
         body: JSON.stringify({ isDone: !currentStatus }),
       });
 
