@@ -1,6 +1,18 @@
 import { getCurrentUser } from "@/lib/dashboard";
 import { prisma } from "@/lib/prisma";
 
+function normalizeSoundUrl(url?: string | null) {
+  const value = (url || "").trim();
+  if (!value) return "/media/water.mp3";
+
+  const lower = value.toLowerCase();
+  if (lower.includes("night")) return "/media/night.mp3";
+  if (lower.includes("rain")) return "/media/rain.mp3";
+  if (lower.includes("water")) return "/media/water.mp3";
+
+  return value.startsWith("/") ? value : `/${value}`;
+}
+
 export async function GET() {
   try {
     const user = await getCurrentUser();
@@ -19,6 +31,14 @@ export async function GET() {
           timerDurationSec: 25 * 60,
           timerRemainingSec: 25 * 60,
         },
+      });
+    }
+
+    const normalizedSoundUrl = normalizeSoundUrl(settings.soundUrl);
+    if (normalizedSoundUrl !== settings.soundUrl) {
+      settings = await prisma.timerSettings.update({
+        where: { userId: user.id },
+        data: { soundUrl: normalizedSoundUrl },
       });
     }
 
@@ -49,7 +69,7 @@ export async function POST(request: Request) {
       update: {
         ...(animationIcon && { animationIcon }),
         ...(soundType && { soundType }),
-        ...(soundUrl && { soundUrl }),
+          ...(soundUrl && { soundUrl: normalizeSoundUrl(soundUrl) }),
         ...(favoriteMinutes !== undefined && { favoriteMinutes }),
         ...(latestMinutes !== undefined && { latestMinutes }),
         ...(timerStatus !== undefined && { timerStatus }),
@@ -61,7 +81,7 @@ export async function POST(request: Request) {
         userId: user.id,
         animationIcon: animationIcon || "Zap",
         soundType: soundType || "water",
-        soundUrl: soundUrl || "/media/water.mp3",
+        soundUrl: normalizeSoundUrl(soundUrl),
         favoriteMinutes: favoriteMinutes ?? 25,
         latestMinutes: latestMinutes ?? 25,
         timerStatus: timerStatus || "IDLE",
