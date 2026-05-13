@@ -14,12 +14,14 @@ import { XpPage } from "./components/XpPage";
 import { CommandSearch } from "./components/CommandSearch";
 import { ThemeToggle } from "./components/ui/theme-toggle";
 import { Button } from "./components/ui/button";
-import { UserAvatarMenu } from "./components/UserAvatarMenu";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "./components/ui/sidebar";
 
 import { NotificationPermissionBanner } from "./components/NotificationPermissionBanner";
 import { authClient } from "@/lib/auth-client";
 import { getTimeZoneHeaders } from "@/lib/timezone";
+import { loadRemoteXp } from "@/lib/xp-cache";
+import { loadRemoteGoals } from "@/lib/goal-cache";
+import { loadRemoteTodos } from "@/lib/todo-cache";
 
 type DashboardSnapshot = {
   todosSummary: { total: number; done: number; open: number };
@@ -65,6 +67,12 @@ function formatTimeUntilStreakBreak(reference: Date, snapshot: DashboardSnapshot
   }
 
   return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+}
+
+function formatStudyTimeInHours(minutes: number) {
+  const hours = minutes / 60;
+  const formatted = hours % 1 === 0 ? hours.toFixed(0) : hours.toFixed(1);
+  return `${formatted}h`;
 }
 
 export default function Home() {
@@ -114,11 +122,25 @@ export default function Home() {
       }
     };
 
+    const preloadData = async () => {
+      try {
+        // Preload XP, Goals, and Todos data in parallel so they're ready when clicked
+        await Promise.all([
+          loadRemoteXp(),
+          loadRemoteGoals(),
+          loadRemoteTodos(),
+        ]);
+      } catch (error) {
+        console.error("Failed to preload data:", error);
+      }
+    };
+
     const refresh = () => {
       void load();
     };
 
     void load();
+    void preloadData();
     window.addEventListener("dashboard:changed", refresh);
 
     const timer = window.setInterval(() => {
@@ -146,6 +168,8 @@ export default function Home() {
         todoCount={todoCount}
         goalCount={goalCount}
         xpCount={xpLevel ?? undefined}
+        session={session}
+        snapshot={snapshot}
       />
       <SidebarInset>
         <motion.div
@@ -165,9 +189,7 @@ export default function Home() {
             <div className="flex items-center gap-3 opacity-80 transition-opacity hover:opacity-100">
             <CommandSearch onNavigate={setCurrentPage} />
             <ThemeToggle />
-            {session?.user ? (
-              <UserAvatarMenu user={session.user} />
-            ) : (
+            {!session?.user && (
               <div className="flex gap-2">
                 <Button variant="outline" asChild>
                   <Link href="/login">Sign In</Link>
@@ -250,7 +272,7 @@ export default function Home() {
             <div className="grid gap-3 md:grid-cols-4">
             {[
               { label: "Tasks done today", value: todaysDoneCount, sub: `of ${snapshot?.todaySummary.todosPlanned ?? 0}`, Icon: CheckCircle2, color: "text-emerald-500" },
-              { label: "Study time today", value: `${todaysStudyMinutes}m`, sub: `${todaysFocusSessions} sessions`, Icon: Clock, color: "text-blue-500" },
+              { label: "Study time today", value: formatStudyTimeInHours(todaysStudyMinutes), sub: `${todaysFocusSessions} sessions`, Icon: Clock, color: "text-blue-500" },
               {
                 label: "Open tasks today",
                 value: todaysOpenCount,
