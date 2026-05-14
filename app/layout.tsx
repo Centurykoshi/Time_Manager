@@ -23,7 +23,15 @@ export default function RootLayout({
         <ThemeProvider>
           <TooltipProvider>
             {children}
-            <Toaster richColors position="bottom-center" />
+            <Toaster
+              position="top-right"
+              offset={72}
+              toastOptions={{
+                classNames: {
+                  success: "border border-primary/60 bg-transparent text-primary",
+                },
+              }}
+            />
           </TooltipProvider>
         </ThemeProvider>
       </body>

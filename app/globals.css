@@ -223,3 +223,19 @@
   }
 }
 
+
+[data-sonner-toast][data-type="success"] {
+  background: transparent !important;
+  color: var(--primary) !important;
+  border-color: color-mix(in oklch, var(--primary) 60%, transparent) !important;
+}
+
+[data-sonner-toast][data-type="success"] [data-icon] {
+  color: var(--primary) !important;
+}
+
+[data-sonner-toast][data-type="success"] [data-title],
+[data-sonner-toast][data-type="success"] [data-description] {
+  color: var(--primary) !important;
+}
+

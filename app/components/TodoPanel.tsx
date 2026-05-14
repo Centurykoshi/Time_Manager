@@ -47,6 +47,18 @@ function dispatchDashboardRefresh() {
   window.dispatchEvent(new Event("dashboard:changed"));
 }
 
+function formatDifficultyLabel(difficulty: Difficulty) {
+  return difficulty.charAt(0) + difficulty.slice(1).toLowerCase();
+}
+
+function showTaskToast(message: string) {
+  toast.custom(() => (
+    <div className="min-w-70 rounded-lg border border-primary/60 bg-transparent px-4 py-3 text-sm font-medium text-primary shadow-lg backdrop-blur-sm">
+      {message}
+    </div>
+  ));
+}
+
 function createLocalId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -315,6 +327,7 @@ export function TodoPanel() {
         setTodoCache(next.map(toSharedTodo), "local");
         return next;
       });
+      showTaskToast(`Task added: ${trimmed}`);
       return;
     }
 
@@ -357,6 +370,8 @@ export function TodoPanel() {
         return nextTodos;
       });
 
+      showTaskToast(`Task added: ${payload.todo.title}`);
+
       dispatchDashboardRefresh();
     } catch {
       // API failed — fall back to local storage with the temp ID
@@ -384,6 +399,9 @@ export function TodoPanel() {
 
     if (storageMode === "local") {
       saveLocalTodos(optimisticTodos);
+      if (nextDone) {
+        showTaskToast(`Task completed: ${target.text}`);
+      }
       return;
     }
 
@@ -426,11 +444,7 @@ export function TodoPanel() {
       setTodoCache(nextTodos.map(toSharedTodo), "remote");
 
       if (nextDone) {
-        toast.custom((t) => (
-          <div className="rounded-lg border border-primary/60 bg-primary/10 px-4 py-3 text-sm font-medium text-primary shadow-lg">
-            ✓ Completed: {target.text}
-          </div>
-        ));
+        showTaskToast(`Task completed: ${target.text}`);
       }
 
       dispatchDashboardRefresh();
@@ -455,6 +469,9 @@ export function TodoPanel() {
 
     if (storageMode === "local") {
       saveLocalTodos(optimisticTodos);
+      if (target.difficulty !== difficulty) {
+        showTaskToast(`Task difficulty changed: ${target.text} (${formatDifficultyLabel(difficulty)})`);
+      }
       return;
     }
 
@@ -494,6 +511,9 @@ export function TodoPanel() {
 
       setTodos(nextTodos);
       setTodoCache(nextTodos.map(toSharedTodo), "remote");
+      if (target.difficulty !== difficulty) {
+        showTaskToast(`Task difficulty changed: ${target.text} (${formatDifficultyLabel(difficulty)})`);
+      }
     } catch {
       const revertedTodos = currentTodos.map((todo) => (todo.id === id ? { ...todo, difficulty: target.difficulty } : todo));
       setTodos(revertedTodos);
@@ -511,12 +531,18 @@ export function TodoPanel() {
 
     if (storageMode === "local") {
       saveLocalTodos(nextTodos);
+      if (target) {
+        showTaskToast(`Task removed: ${target.text}`);
+      }
       return;
     }
 
     try {
       const response = await fetch(`/api/todos/${persistedId}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Failed to delete todo.");
+      if (target) {
+        showTaskToast(`Task removed: ${target.text}`);
+      }
       dispatchDashboardRefresh();
     } catch {
       setTodos(previousTodos);
