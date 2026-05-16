@@ -22,9 +22,9 @@ const AUDIO_SOURCES: Record<SfxType, string> = {
 };
 
 const SFX_VOLUMES: Record<SfxType, number> = {
-  button: 0.18,
-  taskComplete: 0.3,
-  sessionComplete: 0.34,
+  button: 1,
+  taskComplete: 1,
+  sessionComplete: 1,
 };
 
 const SfxContext = createContext<SfxContextValue | null>(null);
