@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { MoreVertical } from "lucide-react";
+import { useSfx } from "./SfxProvider";
 import { toast } from "sonner";
 import { readLocalTodos, writeLocalTodos } from "@/lib/local-todos";
 import { getTodoCache, getTodoCacheSource, loadRemoteTodos, setTodoCache, subscribeTodoCache, type SharedTodo } from "@/lib/todo-cache";
@@ -110,6 +111,7 @@ function fromSharedTodo(todo: SharedTodo): Todo {
 }
 
 export function TodoPanel() {
+  const { play } = useSfx();
   const [now, setNow] = useState(() => new Date());
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -400,6 +402,7 @@ export function TodoPanel() {
     if (storageMode === "local") {
       saveLocalTodos(optimisticTodos);
       if (nextDone) {
+        play("taskComplete");
         showTaskToast(`Task completed: ${target.text}`);
       }
       return;
@@ -444,6 +447,7 @@ export function TodoPanel() {
       setTodoCache(nextTodos.map(toSharedTodo), "remote");
 
       if (nextDone) {
+        play("taskComplete");
         showTaskToast(`Task completed: ${target.text}`);
       }
 

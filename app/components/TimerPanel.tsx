@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Play, Pause, RotateCcw, Heart, History } from "lucide-react";
 import { Button } from "./ui/button";
 import { TimerCustomizer } from "./TimerCustomizer";
+import { useSfx } from "./SfxProvider";
 import { notifyTimerComplete } from "@/lib/notifications";
 import { getTimeZoneHeaders } from "@/lib/timezone";
 
@@ -48,6 +49,7 @@ function normalizeSoundUrl(url?: string | null) {
 }
 
 export function TimerPanel() {
+  const { play } = useSfx();
   const [durationMin, setDurationMin] = useState<number>(25);
   const [remainingSec, setRemainingSec] = useState<number>(25 * 60);
   const [activeDurationSec, setActiveDurationSec] = useState<number>(25 * 60);
@@ -211,7 +213,7 @@ export function TimerPanel() {
     if (showEnded) {
       setStatus("ended");
       setRemainingSec(0);
-      void chime();
+      play("sessionComplete");
     } else {
       setStatus("idle");
       setRemainingSec(resolvedDuration);
@@ -303,45 +305,6 @@ export function TimerPanel() {
       });
     } catch (error) {
       console.error("Failed to save favorite minutes:", error);
-    }
-  };
-
-  const chime = async () => {
-    // WebAudio chime (no external assets).
-    try {
-      const AudioContextCtor =
-        window.AudioContext ||
-        (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextCtor) return;
-
-      const ctx = new AudioContextCtor();
-      const now = ctx.currentTime;
-
-      const o1 = ctx.createOscillator();
-      const g1 = ctx.createGain();
-      o1.type = "sine";
-      o1.frequency.setValueAtTime(523.25, now); // C5
-      g1.gain.setValueAtTime(0, now);
-      g1.gain.linearRampToValueAtTime(0.08, now + 0.02);
-      g1.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
-      o1.connect(g1).connect(ctx.destination);
-      o1.start(now);
-      o1.stop(now + 0.6);
-
-      const o2 = ctx.createOscillator();
-      const g2 = ctx.createGain();
-      o2.type = "triangle";
-      o2.frequency.setValueAtTime(659.25, now + 0.08); // E5
-      g2.gain.setValueAtTime(0, now + 0.08);
-      g2.gain.linearRampToValueAtTime(0.06, now + 0.1);
-      g2.gain.exponentialRampToValueAtTime(0.001, now + 0.62);
-      o2.connect(g2).connect(ctx.destination);
-      o2.start(now + 0.08);
-      o2.stop(now + 0.65);
-
-      setTimeout(() => ctx.close(), 900);
-    } catch {
-      // ignore
     }
   };
 

@@ -12,6 +12,7 @@ import { GoalsPage } from "./components/GoalsPage";
 import { XpPage } from "./components/XpPage";
 
 import { CommandSearch } from "./components/CommandSearch";
+import { SfxProvider, SfxToggleButton } from "./components/SfxProvider";
 import { ThemeToggle } from "./components/ui/theme-toggle";
 import { Button } from "./components/ui/button";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "./components/ui/sidebar";
@@ -76,6 +77,14 @@ function formatStudyTimeInHours(minutes: number) {
 }
 
 export default function Home() {
+  return (
+    <SfxProvider>
+      <HomeContent />
+    </SfxProvider>
+  );
+}
+
+function HomeContent() {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
   const [currentPage, setCurrentPage] = useState<SidebarPage>("main");
   const [session, setSession] = useState<any>(null);
@@ -187,6 +196,7 @@ export default function Home() {
           >
             <SidebarTrigger className="md:hidden" />
             <div className="flex items-center gap-3 opacity-80 transition-opacity hover:opacity-100">
+            <SfxToggleButton />
             <CommandSearch onNavigate={setCurrentPage} />
             <ThemeToggle />
             {!session?.user && (
