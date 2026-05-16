@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Award, CalendarDays, Flame, Trophy } from "lucide-react";
+import { Award, CalendarDays, Flame, Trophy, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { XpTasksModal } from "./XpTasksModal";
@@ -53,12 +53,49 @@ function addDaysToKey(dayKey: string, days: number): string {
 export function XpPage() {
   const [data, setData] = useState<XpResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [viewAllLoading, setViewAllLoading] = useState<"tasks" | "allTime" | null>(null);
   const [showTasksModal, setShowTasksModal] = useState(false);
   const [showAllTimeModal, setShowAllTimeModal] = useState(false);
   const viewAllButtonProps = {
     variant: "default" as const,
     size: "sm" as const,
     className: "shrink-0",
+  };
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await loadRemoteXp(true);
+    } catch (error) {
+      console.error("Failed to refresh XP data:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const openTasksModal = async () => {
+    setShowTasksModal(true);
+    setViewAllLoading("tasks");
+    try {
+      await loadRemoteXp(true);
+    } catch (error) {
+      console.error("Failed to load task XP history:", error);
+    } finally {
+      setViewAllLoading(null);
+    }
+  };
+
+  const openAllTimeModal = async () => {
+    setShowAllTimeModal(true);
+    setViewAllLoading("allTime");
+    try {
+      await loadRemoteXp(true);
+    } catch (error) {
+      console.error("Failed to load all-time XP history:", error);
+    } finally {
+      setViewAllLoading(null);
+    }
   };
 
   useEffect(() => {
@@ -102,10 +139,12 @@ export function XpPage() {
       }
     };
 
-    // Keep XP in sync even when background updates happen without explicit events.
+    // Keep XP in sync - refresh every 5 minutes if page is visible
     const refreshInterval = window.setInterval(() => {
-      void load(true);
-    }, 15000);
+      if (!document.hidden) {
+        void load(true);
+      }
+    }, 5 * 60 * 1000);
 
     window.addEventListener("dashboard:changed", onDashboardChanged);
     window.addEventListener("focus", onWindowFocus);
@@ -151,10 +190,20 @@ export function XpPage() {
 
   return (
     <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="space-y-6 xl:-ml-4">
-      <div>
-        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">XP tracker</p>
-        <h2 className="mt-1 text-3xl font-semibold">All experience points</h2>
-        <p className="mt-2 text-sm text-muted-foreground">Complete tasks to earn XP and level up. Harder tasks reward more points.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1">
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">XP tracker</p>
+          <h2 className="mt-1 text-3xl font-semibold">All experience points</h2>
+          <p className="mt-2 text-sm text-muted-foreground">Complete tasks to earn XP and level up. Harder tasks reward more points.</p>
+        </div>
+        <button
+          onClick={handleManualRefresh}
+          disabled={isRefreshing || loading}
+          className="mt-1 rounded-lg border border-border/60 bg-background/50 p-2 transition-all hover:bg-background/80 disabled:opacity-50"
+          title="Refresh XP data"
+        >
+          <RefreshCw className={`h-5 w-5 text-muted-foreground transition-transform ${isRefreshing ? "animate-spin" : ""}`} />
+        </button>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
@@ -267,7 +316,9 @@ export function XpPage() {
               <p className="text-sm text-muted-foreground">All-time completed tasks and earned XP.</p>
             </div>
             <Button
-              onClick={() => setShowTasksModal(true)}
+              onClick={() => {
+                void openTasksModal();
+              }}
               {...viewAllButtonProps}
             >
               View all
@@ -298,7 +349,7 @@ export function XpPage() {
             isOpen={showTasksModal}
             onClose={() => setShowTasksModal(false)}
             tasks={data?.recentTasks ?? []}
-            loading={loading}
+            loading={loading || viewAllLoading === "tasks"}
             formatFullDateWithDay={formatFullDateWithDay}
           />
           <div className="rounded-2xl border border-border/60 bg-muted/15 p-4">
@@ -308,7 +359,9 @@ export function XpPage() {
                 <p className="text-sm text-muted-foreground">Every tracked day with date, day name, and earned XP.</p>
               </div>
               <Button
-                onClick={() => setShowAllTimeModal(true)}
+                onClick={() => {
+                  void openAllTimeModal();
+                }}
                 {...viewAllButtonProps}
               >
                 View all
@@ -316,7 +369,7 @@ export function XpPage() {
             </div>
 
             <div className="mt-4 max-h-80 space-y-3 overflow-auto pr-1">
-              {allTimeDailyXp.map((day) => (
+              {allTimeDailyXp.slice(0, 5).map((day) => (
                 <div key={day.day} className="rounded-xl border border-border/50 bg-background/70 p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -337,7 +390,7 @@ export function XpPage() {
             isOpen={showAllTimeModal}
             onClose={() => setShowAllTimeModal(false)}
             entries={allTimeDailyXp}
-            loading={loading}
+            loading={loading || viewAllLoading === "allTime"}
             formatFullDateWithDay={formatFullDateWithDay}
           />
         </div>

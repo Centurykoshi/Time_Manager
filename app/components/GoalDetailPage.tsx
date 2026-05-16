@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { ArrowLeft, Plus } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Goal, GoalGroup, groupLabels } from "./goals";
+import { Goal, GoalGroup, formatGoalTagLabel, groupLabels } from "./goals";
 import { DIFFICULTY_XP, type Difficulty } from "@/lib/xp";
 
 type GoalDetailPageProps = {
@@ -144,7 +144,7 @@ export function GoalDetailPage({ group, goals, onBack, onCreate, onDelete, onUpd
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-base font-semibold">{goal.title}</p>
-                      {goal.goalTag ? <p className="mt-1 text-xs uppercase tracking-[0.14em] text-primary/80">{goal.goalTag.name} · {goal.goalTag.goalXp} XP tag</p> : null}
+                      {goal.goalTag ? <p className="mt-1 text-xs uppercase tracking-[0.14em] text-primary/80">{formatGoalTagLabel(goal.goalTag)} · {goal.goalTag.goalXp} XP tag</p> : null}
                       {goal.description ? <p className="mt-1 text-sm text-muted-foreground">{goal.description}</p> : null}
                       <p className="mt-2 text-xs text-muted-foreground">{goal.currentValue} of {goal.targetValue} {goal.unit}</p>
                     </div>

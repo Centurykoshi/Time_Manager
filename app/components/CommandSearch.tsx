@@ -187,6 +187,7 @@ export function CommandSearch({ onNavigate }: CommandSearchProps) {
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
+          title="Search workspace"
           side="top"
           className="fixed! inset-auto! left-1/2! top-1/2! right-auto! bottom-auto! h-[70vh]! w-[min(92vw,48rem)]! max-w-none! -translate-x-1/2! -translate-y-1/2! overflow-hidden rounded-2xl border border-border/60 p-0 shadow-2xl"
           showCloseButton={false}

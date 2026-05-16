@@ -22,12 +22,16 @@ export async function GET(request: Request) {
     const user = await getCurrentUser();
     const timeZone = getTimeZoneFromHeader(request);
   
-  // Get all completed todos with their XP rewards
+  // Get completed todos - limit to last 90 days for daily XP + last 20 for recent tasks
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
   const completedTodos = await prisma.todoItem.findMany({
     where: {
       userId: user.id,
       isDone: true,
       xpEarned: { not: 0 },
+      completedAt: { gte: ninetyDaysAgo },
     },
     orderBy: { completedAt: "desc" },
     select: {
@@ -37,18 +41,22 @@ export async function GET(request: Request) {
       xpEarned: true,
       completedAt: true,
     },
+    take: 1000, // Hard limit to prevent huge result sets
   });
 
+  // Get study sessions - limit to last 90 days
   const studySessions = await prisma.studySession.findMany({
     where: {
       userId: user.id,
       durationMinutes: { gt: 0 },
+      startedAt: { gte: ninetyDaysAgo },
     },
     orderBy: { startedAt: "desc" },
     select: {
       durationMinutes: true,
       startedAt: true,
     },
+    take: 1000, // Hard limit to prevent huge result sets
   });
 
   const xpByDay = new Map<string, { taskXp: number; studyXp: number; taskCount: number }>();

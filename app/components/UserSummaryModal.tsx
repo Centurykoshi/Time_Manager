@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Clock, CheckCircle2, Trophy, TrendingUp, X } from "lucide-react";
+import { Clock, CheckCircle2, Trophy, TrendingUp } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader } from "@/app/components/ui/sheet";
 import { getGradientColors } from "@/lib/color-utils";
 
@@ -42,7 +42,21 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
     .join("");
 
   const totalStudyMinutes = snapshot?.weekSummary.studiedMinutes ?? 0;
-  const totalStudyHours = (totalStudyMinutes / 60).toFixed(1);
+  const formatStudyTime = (minutes: number) => {
+    const safeMinutes = Math.max(0, Math.floor(minutes));
+    const hours = Math.floor(safeMinutes / 60);
+    const remainingMinutes = safeMinutes % 60;
+
+    if (hours <= 0) {
+      return `${safeMinutes} minute${safeMinutes === 1 ? "" : "s"}`;
+    }
+
+    if (remainingMinutes === 0) {
+      return `${hours} hour${hours === 1 ? "" : "s"}`;
+    }
+
+    return `${hours} hour${hours === 1 ? "" : "s"} ${remainingMinutes} minute${remainingMinutes === 1 ? "" : "s"}`;
+  };
   const totalTasksDone = snapshot?.todosSummary.done ?? 0;
   const totalTasksPlanned = snapshot?.todosSummary.total ?? 0;
   const totalXp = snapshot?.xpSummary.totalXp ?? 0;
@@ -68,30 +82,26 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent side="right" className="w-full sm:w-96 bg-background/95 backdrop-blur-sm border-l border-border/30 p-0">
+      <SheetContent title="User summary" side="right" className="w-full sm:w-96 bg-background/95 backdrop-blur-sm border-l border-border/30 p-0">
         <SheetHeader className="border-b border-border/30 px-6 py-4 flex flex-row items-center justify-between space-y-0">
           <div className="flex items-center gap-3">
             <div
-              className="h-10 w-10 rounded-full border border-border/30 flex items-center justify-center text-sm font-semibold shrink-0"
+              className="h-10 w-10 rounded-full border border-border/30 flex items-center justify-center text-sm font-semibold shrink-0 relative overflow-hidden shadow-sm"
               style={{
                 background: isGoogle
-                  ? "white"
+                  ? "linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.88) 100%)"
                   : `linear-gradient(135deg, ${color1} 0%, ${color2} 100%)`,
               }}
             >
-              {!isGoogle && <span className="text-white">{initials}</span>}
+              <div className="absolute inset-0 bg-primary/14 transition-colors" />
+              <div className="absolute inset-0 bg-background/8 mix-blend-soft-light" />
+              {!isGoogle && <span className="relative z-10 text-white/90 drop-shadow-sm">{initials}</span>}
             </div>
             <div>
               <p className="text-sm font-semibold">{user?.name || "User"}</p>
               <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-md hover:bg-secondary/50 p-2 transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </SheetHeader>
 
         <div className="px-6 py-6 space-y-6 overflow-auto max-h-[calc(100vh-100px)]">
@@ -112,7 +122,7 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Study Hours</p>
-                    <p className="text-2xl font-bold mt-2">{totalStudyHours}h</p>
+                    <p className="text-2xl font-bold mt-2">{formatStudyTime(totalStudyMinutes)}</p>
                     <p className="text-xs text-muted-foreground mt-1">{totalStudyMinutes} minutes total</p>
                   </div>
                   <Clock className="h-5 w-5 text-blue-500 opacity-70" />

@@ -31,6 +31,20 @@ export type GoalTemplate = {
 
 export type GoalGroup = { id: string; name: string; slug: string; type: GoalCadence };
 
+export function formatGoalTagLabel(tag?: { name: string; slug: string } | null) {
+  if (!tag) return "";
+
+  const source = tag.slug?.trim() || tag.name?.trim() || "";
+  if (!source) return "";
+
+  return source
+    .replace(/[-_]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
 export const groupOrder: GoalCadence[] = ["WEEKLY", "MONTHLY", "YEARLY", "ALL_TIME"];
 
 export const groupLabels: Record<GoalCadence, string> = {

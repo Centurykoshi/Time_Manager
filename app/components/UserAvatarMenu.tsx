@@ -80,20 +80,20 @@ export function UserAvatarMenu({ user }: { user?: { email?: string; name?: strin
       {/* Avatar Circle */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="h-10 w-10 rounded-full border border-border/30 flex items-center justify-center cursor-pointer hover:scale-105 transition-transform text-sm font-semibold relative overflow-hidden group"
+        className="h-10 w-10 rounded-full border border-border/30 flex items-center justify-center cursor-pointer hover:scale-105 transition-transform text-sm font-semibold relative overflow-hidden group shadow-sm"
         style={{
           background: isGoogle 
-            ? undefined 
+            ? "linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.88) 100%)"
             : `linear-gradient(135deg, ${color1} 0%, ${color2} 100%)`,
           backgroundColor: isGoogle ? "white" : undefined,
         }}
         title={userEmail}
       >
-        {/* Primary layer overlay */}
-        {!isGoogle && (
-          <div className="absolute inset-0 bg-card/40 group-hover:bg-card/30 transition-colors"></div>
-        )}
-        {isGoogle ? <GoogleIcon /> : null}
+        <div className="absolute inset-0 bg-primary/14 group-hover:bg-primary/20 transition-colors" />
+        <div className="absolute inset-0 bg-background/8 mix-blend-soft-light" />
+        <span className="relative z-10 text-white/90 drop-shadow-sm">
+          {isGoogle ? <GoogleIcon /> : initials}
+        </span>
       </button>
 
       {/* Dropdown Menu */}

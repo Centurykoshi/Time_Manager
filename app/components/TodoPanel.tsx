@@ -297,7 +297,15 @@ export function TodoPanel() {
     };
   }, [activeTodoId, todos]);
 
-  const visibleTodos = todos.filter((todo) => isSameLocalDay(todo.createdAt, now));
+  const visibleTodos = todos
+    .filter((todo) => isSameLocalDay(todo.createdAt, now))
+    .sort((left, right) => {
+      if (left.done !== right.done) {
+        return left.done ? 1 : -1;
+      }
+
+      return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+    });
   const doneCount = visibleTodos.filter((todo) => todo.done).length;
 
   const add = async () => {
@@ -317,9 +325,6 @@ export function TodoPanel() {
 
     setTodos((current) => [optimisticTodo, ...current]);
     setText("");
-    requestAnimationFrame(() => {
-      listRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-    });
 
     if (storageMode === "local") {
       // In local mode, the temp ID is the real ID — just persist it
@@ -329,6 +334,7 @@ export function TodoPanel() {
         setTodoCache(next.map(toSharedTodo), "local");
         return next;
       });
+      play("addTask");
       showTaskToast(`Task added: ${trimmed}`);
       return;
     }
@@ -372,6 +378,7 @@ export function TodoPanel() {
         return nextTodos;
       });
 
+      play("addTask");
       showTaskToast(`Task added: ${payload.todo.title}`);
 
       dispatchDashboardRefresh();
@@ -474,6 +481,7 @@ export function TodoPanel() {
     if (storageMode === "local") {
       saveLocalTodos(optimisticTodos);
       if (target.difficulty !== difficulty) {
+        play("changeDifficulty");
         showTaskToast(`Task difficulty changed: ${target.text} (${formatDifficultyLabel(difficulty)})`);
       }
       return;
@@ -516,6 +524,7 @@ export function TodoPanel() {
       setTodos(nextTodos);
       setTodoCache(nextTodos.map(toSharedTodo), "remote");
       if (target.difficulty !== difficulty) {
+        play("changeDifficulty");
         showTaskToast(`Task difficulty changed: ${target.text} (${formatDifficultyLabel(difficulty)})`);
       }
     } catch {
@@ -590,20 +599,17 @@ export function TodoPanel() {
 
       <motion.div
         ref={listRef}
-        layoutScroll
-        className="flex-1 min-h-0 space-y-2 overflow-auto [overflow-anchor:none]"
+        className="flex flex-1 min-h-0 flex-col gap-2 overflow-auto [overflow-anchor:none]"
         onMouseLeave={() => setActiveTodoId(null)}
       >
-       
         <AnimatePresence initial={false}>
           {visibleTodos.map((t) => (
             <motion.div
               key={t.id}
-              layout="position"
-              initial={{ opacity: 0, y: 6, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -6, scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: t.done ? 0.72 : 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
               onClick={() => setActiveTodoId(t.id)}
               className={`group flex items-center gap-2 rounded-lg px-3 py-2 transition hover:bg-secondary/30 ${
                 activeTodoId === t.id

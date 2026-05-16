@@ -12,6 +12,10 @@ import { notifyGoalReached } from "@/lib/notifications";
 import { DIFFICULTY_XP, type Difficulty } from "@/lib/xp";
 import { getGoalCache, loadRemoteGoals, setGoalCache, subscribeGoalCache, type GoalRecord } from "@/lib/goal-cache";
 
+function formatDifficultyLabel(difficulty: Difficulty) {
+  return difficulty.charAt(0) + difficulty.slice(1).toLowerCase();
+}
+
 export function GoalsPage() {
   const [goals, setGoals] = useState<GoalRecord[]>([]);
   const [groups, setGroups] = useState<GoalGroup[]>([]);
@@ -95,7 +99,7 @@ export function GoalsPage() {
   const createGoal = async (group: GoalGroup, title: string, target: number, description: string, unit: string, difficulty: Difficulty) => {
     if (!title || !target) return null;
     try {
-      const tag = await ensureTag(difficulty, DIFFICULTY_XP[difficulty]);
+      const tag = await ensureTag(formatDifficultyLabel(difficulty), DIFFICULTY_XP[difficulty]);
       const res = await fetch("/api/goals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

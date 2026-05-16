@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Volume2, VolumeX } from "lucide-react";
 import { Button } from "./ui/button";
 
-type SfxType = "button" | "taskComplete" | "sessionComplete";
+type SfxType = "button" | "taskComplete" | "sessionComplete" | "addTask" | "changeDifficulty";
 
 type SfxContextValue = {
   enabled: boolean;
@@ -19,12 +19,16 @@ const AUDIO_SOURCES: Record<SfxType, string> = {
   button: "/media/for buttons.wav",
   taskComplete: "/media/addthisaftercompletingtask.wav",
   sessionComplete: "/media/addthisaftersessioncomplete.wav",
+  addTask: "/media/Addtask.wav",
+  changeDifficulty: "/media/changediffulty.wav",
 };
 
 const SFX_VOLUMES: Record<SfxType, number> = {
   button: 1,
   taskComplete: 1,
   sessionComplete: 1,
+  addTask: 1,
+  changeDifficulty: 1,
 };
 
 const SfxContext = createContext<SfxContextValue | null>(null);

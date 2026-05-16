@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { ArrowRight, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { Goal, getGoalPace, getGoalPaceLabel, getGoalProgress } from "./goals";
+import { Goal, formatGoalTagLabel, getGoalPace, getGoalPaceLabel, getGoalProgress } from "./goals";
 import { cn } from "@/lib/utils";
 import { getGoalCheckInXp } from "@/lib/xp";
 
@@ -24,7 +24,7 @@ export function GoalProgressCard({ goal, onDelete, onUpdateProgress }: GoalProgr
   const xpPerCheckIn = getGoalCheckInXp(goal.targetValue, goal.cadence, goal.goalTag?.goalXp);
   const statusLabel = isCompleted ? "Completed" : behindPace ? "Behind" : pace?.status === "ahead" ? "Ahead" : "On track";
   const statusClassName = isCompleted
-    ? "border-emerald-400/35 bg-emerald-500/10 text-emerald-200"
+    ? "border-primary/35 bg-primary/10 text-primary"
     : behindPace
       ? "border-amber-400/35 bg-amber-500/10 text-amber-200"
       : pace?.status === "ahead"
@@ -39,7 +39,7 @@ export function GoalProgressCard({ goal, onDelete, onUpdateProgress }: GoalProgr
       className={cn(
         "rounded-2xl border p-4 transition-colors",
         isCompleted
-          ? "border-emerald-500/35 bg-emerald-500/8"
+          ? "border-primary/35 bg-primary/8"
           : behindPace
             ? "border-amber-500/35 bg-amber-500/8"
             : "border-border/60 bg-card/85",
@@ -50,7 +50,7 @@ export function GoalProgressCard({ goal, onDelete, onUpdateProgress }: GoalProgr
           <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{goal.goalGroup?.type ?? goal.cadence}</div>
           <div className="mt-2 flex items-center gap-2">
             <p className="text-base font-semibold">{goal.title}</p>
-            {goal.goalTag ? <Badge variant="outline" className="text-[10px] uppercase tracking-[0.12em]">{goal.goalTag.name}</Badge> : null}
+            {goal.goalTag ? <Badge variant="outline" className="text-[10px] uppercase tracking-[0.12em]">{formatGoalTagLabel(goal.goalTag)}</Badge> : null}
             <Badge variant="outline" className={statusClassName}>{statusLabel}</Badge>
             <Badge variant="secondary" className="gap-1">
               +{xpPerCheckIn} XP

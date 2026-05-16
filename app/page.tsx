@@ -70,10 +70,20 @@ function formatTimeUntilStreakBreak(reference: Date, snapshot: DashboardSnapshot
   return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
 }
 
-function formatStudyTimeInHours(minutes: number) {
-  const hours = minutes / 60;
-  const formatted = hours % 1 === 0 ? hours.toFixed(0) : hours.toFixed(1);
-  return `${formatted}h`;
+function formatStudyTime(minutes: number) {
+  const safeMinutes = Math.max(0, Math.floor(minutes));
+  const hours = Math.floor(safeMinutes / 60);
+  const remainingMinutes = safeMinutes % 60;
+
+  if (hours <= 0) {
+    return `${safeMinutes} minute${safeMinutes === 1 ? "" : "s"}`;
+  }
+
+  if (remainingMinutes === 0) {
+    return `${hours} hour${hours === 1 ? "" : "s"}`;
+  }
+
+  return `${hours} hour${hours === 1 ? "" : "s"} ${remainingMinutes} minute${remainingMinutes === 1 ? "" : "s"}`;
 }
 
 export default function Home() {
@@ -282,11 +292,11 @@ function HomeContent() {
             <div className="grid gap-3 md:grid-cols-4">
             {[
               { label: "Tasks done today", value: todaysDoneCount, sub: `of ${snapshot?.todaySummary.todosPlanned ?? 0}`, Icon: CheckCircle2, color: "text-emerald-500" },
-              { label: "Study time today", value: formatStudyTimeInHours(todaysStudyMinutes), sub: `${todaysFocusSessions} sessions`, Icon: Clock, color: "text-blue-500" },
+              { label: "Study time today", value: formatStudyTime(todaysStudyMinutes), sub: `${todaysFocusSessions} sessions`, Icon: Clock, color: "text-blue-500" },
               {
-                label: "Open tasks today",
-                value: todaysOpenCount,
-                sub: "Ready to focus",
+                label: "Active goals",
+                value: goalCount,
+                sub: "Across all cadences",
                 Icon: CircleDot,
                 color: "text-amber-500",
               },
