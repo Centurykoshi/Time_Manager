@@ -40,6 +40,12 @@ type DashboardSnapshot = {
     weekStart: string;
     weekEnd: string;
   };
+  allTimeSummary: {
+    studiedMinutes: number;
+    focusSessions: number;
+    todosCompleted: number;
+    todosPlanned: number;
+  };
   streakDays: number;
   streakBreakAt: string | null;
   dailySeries: Array<{ day: string; label: string; studiedMinutes: number; focusSessions: number }>;

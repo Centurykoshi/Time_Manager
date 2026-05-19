@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { CheckCircle2, Trash2, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -98,6 +98,7 @@ export function TodosPage() {
   const [isAdding, setIsAdding] = useState(false);
   const [activeFilter, setActiveFilter] = useState<TimeFilter>("today");
   const [storageMode, setStorageMode] = useState<StorageMode>("remote");
+  const todosRef = useRef<TodoItem[]>([]);
 
   const loadLocalTodos = () => readLocalTodos().map(fromLocalTodo);
 
@@ -105,7 +106,15 @@ export function TodosPage() {
     writeLocalTodos(nextTodos.map(toLocalTodo));
   };
 
+  const syncTodos = (nextTodos: TodoItem[], source: StorageMode) => {
+    todosRef.current = nextTodos;
+    setTodos(nextTodos);
+    setStorageMode(source);
+    setTodoCache(nextTodos.map(toSharedTodo), source);
+  };
+
   const applyTodos = (nextTodos: TodoItem[], source: "remote" | "local") => {
+    todosRef.current = nextTodos;
     setTodos(nextTodos);
     setStorageMode(source);
     setIsLoading(false);
@@ -154,6 +163,10 @@ export function TodosPage() {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    todosRef.current = todos;
+  }, [todos]);
 
   const getFilteredTodos = () => {
     const now = new Date();
@@ -229,11 +242,9 @@ export function TodosPage() {
         difficulty: "EASY",
       };
 
-      const nextTodos = [nextTodo, ...todos];
-      setTodos(nextTodos);
+      const nextTodos = [nextTodo, ...todosRef.current];
+      syncTodos(nextTodos, "local");
       saveLocalTodos(nextTodos);
-      setStorageMode("local");
-      setTodoCache(nextTodos.map(toSharedTodo), "local");
       setNewTodoTitle("");
       window.dispatchEvent(new Event("dashboard:changed"));
     };
@@ -253,7 +264,7 @@ export function TodosPage() {
 
       if (response.ok) {
         const payload = (await response.json()) as { todo: TodoItem };
-        const nextTodos = [payload.todo, ...todos];
+        const nextTodos = [payload.todo, ...todosRef.current];
         writeTodos(nextTodos, "remote");
         setNewTodoTitle("");
         window.dispatchEvent(new Event("dashboard:changed"));
@@ -270,11 +281,12 @@ export function TodosPage() {
 
 
   const handleToggleTodo = async (id: string, currentStatus: boolean) => {
+    const currentTodos = todosRef.current;
+
     if (storageMode === "local") {
-      const nextTodos = todos.map((todo) => (todo.id === id ? { ...todo, isDone: !currentStatus } : todo));
-      setTodos(nextTodos);
+      const nextTodos = currentTodos.map((todo) => (todo.id === id ? { ...todo, isDone: !currentStatus } : todo));
+      syncTodos(nextTodos, "local");
       saveLocalTodos(nextTodos);
-      setTodoCache(nextTodos.map(toSharedTodo), "local");
       window.dispatchEvent(new Event("dashboard:changed"));
       return;
     }
@@ -288,32 +300,29 @@ export function TodosPage() {
 
       if (response.ok) {
         const payload = (await response.json()) as { todo: TodoItem };
-        const nextTodos = todos.map((todo) => (todo.id === id ? payload.todo : todo));
+        const nextTodos = todosRef.current.map((todo) => (todo.id === id ? payload.todo : todo));
         writeTodos(nextTodos, "remote");
         window.dispatchEvent(new Event("dashboard:changed"));
       } else {
-        const nextTodos = todos.map((todo) => (todo.id === id ? { ...todo, isDone: !currentStatus } : todo));
-        setTodos(nextTodos);
+        const nextTodos = todosRef.current.map((todo) => (todo.id === id ? { ...todo, isDone: !currentStatus } : todo));
+        syncTodos(nextTodos, "local");
         saveLocalTodos(nextTodos);
-        setStorageMode("local");
-        setTodoCache(nextTodos.map(toSharedTodo), "local");
       }
     } catch (error) {
       console.error("Failed to update todo:", error);
-      const nextTodos = todos.map((todo) => (todo.id === id ? { ...todo, isDone: !currentStatus } : todo));
-      setTodos(nextTodos);
+      const nextTodos = todosRef.current.map((todo) => (todo.id === id ? { ...todo, isDone: !currentStatus } : todo));
+      syncTodos(nextTodos, "local");
       saveLocalTodos(nextTodos);
-      setStorageMode("local");
-      setTodoCache(nextTodos.map(toSharedTodo), "local");
     }
   };
 
   const handleDeleteTodo = async (id: string) => {
+    const currentTodos = todosRef.current;
+
     if (storageMode === "local") {
-      const nextTodos = todos.filter((todo) => todo.id !== id);
-      setTodos(nextTodos);
+      const nextTodos = currentTodos.filter((todo) => todo.id !== id);
+      syncTodos(nextTodos, "local");
       saveLocalTodos(nextTodos);
-      setTodoCache(nextTodos.map(toSharedTodo), "local");
       window.dispatchEvent(new Event("dashboard:changed"));
       return;
     }
@@ -322,23 +331,19 @@ export function TodosPage() {
       const response = await fetch(`/api/todos/${id}`, { method: "DELETE" });
 
       if (response.ok) {
-        const nextTodos = todos.filter((todo) => todo.id !== id);
+        const nextTodos = todosRef.current.filter((todo) => todo.id !== id);
         writeTodos(nextTodos, "remote");
         window.dispatchEvent(new Event("dashboard:changed"));
       } else {
-        const nextTodos = todos.filter((todo) => todo.id !== id);
-        setTodos(nextTodos);
+        const nextTodos = todosRef.current.filter((todo) => todo.id !== id);
+        syncTodos(nextTodos, "local");
         saveLocalTodos(nextTodos);
-        setStorageMode("local");
-        setTodoCache(nextTodos.map(toSharedTodo), "local");
       }
     } catch (error) {
       console.error("Failed to delete todo:", error);
-      const nextTodos = todos.filter((todo) => todo.id !== id);
-      setTodos(nextTodos);
+      const nextTodos = todosRef.current.filter((todo) => todo.id !== id);
+      syncTodos(nextTodos, "local");
       saveLocalTodos(nextTodos);
-      setStorageMode("local");
-      setTodoCache(nextTodos.map(toSharedTodo), "local");
     }
   };
 

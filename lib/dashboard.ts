@@ -35,6 +35,12 @@ export type DashboardSnapshot = {
     weekStart: string;
     weekEnd: string;
   };
+  allTimeSummary: {
+    studiedMinutes: number;
+    focusSessions: number;
+    todosCompleted: number;
+    todosPlanned: number;
+  };
   streakDays: number;
   streakBreakAt: string | null;
   dailySeries: Array<{
@@ -163,7 +169,7 @@ export async function getDashboardSnapshot(timeZone = "UTC"): Promise<DashboardS
     todoTotal,
     todoDone,
     allTodos,
-    allStudySessions,
+    studySessionTotals,
     allDailySummaries,
     goalTotal,
     xpRows,
@@ -177,16 +183,10 @@ export async function getDashboardSnapshot(timeZone = "UTC"): Promise<DashboardS
         isDone: true,
       },
     }),
-    prisma.studySession.findMany({
-      where: {
-        userId: user.id,
-        startedAt: { gte: lookbackStart, lt: lookaheadEnd },
-        durationMinutes: { gt: 0 },
-      },
-      select: {
-        startedAt: true,
-        durationMinutes: true,
-      },
+    prisma.studySession.aggregate({
+      where: { userId: user.id, durationMinutes: { gt: 0 } },
+      _sum: { durationMinutes: true },
+      _count: { _all: true },
     }),
     prisma.dailyStudySummary.findMany({
       where: { userId: user.id, day: { gte: lookbackStart, lt: lookaheadEnd } },
@@ -282,6 +282,13 @@ export async function getDashboardSnapshot(timeZone = "UTC"): Promise<DashboardS
     { studiedMinutes: 0, focusSessions: 0, todosCompleted: 0, studyDays: 0 },
   );
 
+  const allTimeSummary = {
+    studiedMinutes: studySessionTotals._sum.durationMinutes ?? 0,
+    focusSessions: studySessionTotals._count._all ?? 0,
+    todosCompleted: todoDone,
+    todosPlanned: todoTotal,
+  };
+
   const totalXpRaw = xpRows[0]?.total_xp ?? 0;
   const totalXp = Number(totalXpRaw);
   const xpLevel = getXpLevel(totalXp);
@@ -310,6 +317,7 @@ export async function getDashboardSnapshot(timeZone = "UTC"): Promise<DashboardS
       weekEnd: weekEndKey,
       todosPlanned: todoTotal,
     },
+    allTimeSummary,
     streakDays: streakState.streakDays,
     streakBreakAt: streakState.streakBreakAt,
     dailySeries,

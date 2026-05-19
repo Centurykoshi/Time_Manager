@@ -124,8 +124,22 @@ export function TodoPanel() {
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const listRef = useRef<HTMLDivElement | null>(null);
+  const todosRef = useRef<Todo[]>([]);
 
   const getPersistedId = (todo: Todo) => todo.serverId ?? todo.id;
+
+  const syncTodos = (nextTodos: Todo[], source: "remote" | "local") => {
+    todosRef.current = nextTodos;
+    setTodos(nextTodos);
+    setStorageMode(source);
+    setTodoCache(nextTodos.map(toSharedTodo), source);
+  };
+
+  const updateTodos = (updater: (current: Todo[]) => Todo[], source: "remote" | "local" = storageMode) => {
+    const nextTodos = updater(todosRef.current);
+    syncTodos(nextTodos, source);
+    return nextTodos;
+  };
 
   // Delay showing the loading skeleton so fast loads never cause a flicker
   useEffect(() => {
@@ -206,6 +220,7 @@ export function TodoPanel() {
   };
 
   const applyTodos = (nextTodos: Todo[], source: "remote" | "local") => {
+    todosRef.current = nextTodos;
     setTodos(nextTodos);
     setStorageMode(source);
     setLoading(false);
@@ -258,6 +273,10 @@ export function TodoPanel() {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    todosRef.current = todos;
+  }, [todos]);
 
   useEffect(() => {
     if (!activeTodoId) return;
@@ -323,17 +342,16 @@ export function TodoPanel() {
       difficulty: "EASY",
     };
 
-    setTodos((current) => [optimisticTodo, ...current]);
+    updateTodos((current) => [optimisticTodo, ...current], storageMode);
     setText("");
 
     if (storageMode === "local") {
       // In local mode, the temp ID is the real ID — just persist it
-      setTodos((current) => {
+      updateTodos((current) => {
         const next = [optimisticTodo, ...current.filter((todo) => todo.id !== tempId)];
         saveLocalTodos(next);
-        setTodoCache(next.map(toSharedTodo), "local");
         return next;
-      });
+      }, "local");
       play("addTask");
       showTaskToast(`Task added: ${trimmed}`);
       return;
@@ -360,7 +378,7 @@ export function TodoPanel() {
       };
 
       // Swap the temp ID for the real server ID
-      setTodos((current) => {
+      updateTodos((current) => {
         const nextTodos = current.map((todo) =>
           todo.id === tempId
             ? {
@@ -374,9 +392,8 @@ export function TodoPanel() {
               }
             : todo,
         );
-        setTodoCache(nextTodos.map(toSharedTodo), "remote");
         return nextTodos;
-      });
+      }, "remote");
 
       play("addTask");
       showTaskToast(`Task added: ${payload.todo.title}`);
@@ -394,7 +411,7 @@ export function TodoPanel() {
   };
 
   const toggle = async (id: string) => {
-    const currentTodos = todos;
+    const currentTodos = todosRef.current;
     const target = currentTodos.find((todo) => todo.id === id);
     if (!target) return;
     const persistedId = getPersistedId(target);
@@ -403,8 +420,7 @@ export function TodoPanel() {
     const nextCompletedAt = nextDone ? new Date().toISOString() : null;
 
     const optimisticTodos = currentTodos.map((todo) => (todo.id === id ? { ...todo, done: nextDone, completedAt: nextCompletedAt } : todo));
-    setTodos(optimisticTodos);
-    setTodoCache(optimisticTodos.map(toSharedTodo), storageMode);
+    syncTodos(optimisticTodos, storageMode);
 
     if (storageMode === "local") {
       saveLocalTodos(optimisticTodos);
@@ -436,7 +452,7 @@ export function TodoPanel() {
         };
       };
 
-      const nextTodos = optimisticTodos.map((todo) =>
+      const nextTodos = todosRef.current.map((todo) =>
         todo.id === id
           ? {
               id: payload.todo.id,
@@ -450,8 +466,7 @@ export function TodoPanel() {
           : todo,
       );
 
-      setTodos(nextTodos);
-      setTodoCache(nextTodos.map(toSharedTodo), "remote");
+        syncTodos(nextTodos, "remote");
 
       if (nextDone) {
         play("taskComplete");
@@ -460,23 +475,20 @@ export function TodoPanel() {
 
       dispatchDashboardRefresh();
     } catch {
-      setTodos(optimisticTodos);
+      syncTodos(optimisticTodos, "local");
       saveLocalTodos(optimisticTodos);
-      setStorageMode("local");
-      setTodoCache(optimisticTodos.map(toSharedTodo), "local");
     }
   };
 
   const updateDifficulty = async (id: string, difficulty: Difficulty) => {
     setOpenMenuId(null);
-    const currentTodos = todos;
+    const currentTodos = todosRef.current;
     const target = currentTodos.find((todo) => todo.id === id);
     if (!target) return;
     const persistedId = getPersistedId(target);
 
     const optimisticTodos = currentTodos.map((todo) => (todo.id === id ? { ...todo, difficulty } : todo));
-    setTodos(optimisticTodos);
-    setTodoCache(optimisticTodos.map(toSharedTodo), storageMode);
+    syncTodos(optimisticTodos, storageMode);
 
     if (storageMode === "local") {
       saveLocalTodos(optimisticTodos);
@@ -507,7 +519,7 @@ export function TodoPanel() {
         };
       };
 
-      const nextTodos = optimisticTodos.map((todo) =>
+      const nextTodos = todosRef.current.map((todo) =>
         todo.id === id
           ? {
               id: payload.todo.id,
@@ -521,26 +533,23 @@ export function TodoPanel() {
           : todo,
       );
 
-      setTodos(nextTodos);
-      setTodoCache(nextTodos.map(toSharedTodo), "remote");
+      syncTodos(nextTodos, "remote");
       if (target.difficulty !== difficulty) {
         play("changeDifficulty");
         showTaskToast(`Task difficulty changed: ${target.text} (${formatDifficultyLabel(difficulty)})`);
       }
     } catch {
-      const revertedTodos = currentTodos.map((todo) => (todo.id === id ? { ...todo, difficulty: target.difficulty } : todo));
-      setTodos(revertedTodos);
-      setTodoCache(revertedTodos.map(toSharedTodo), "remote");
+      const revertedTodos = todosRef.current.map((todo) => (todo.id === id ? { ...todo, difficulty: target.difficulty } : todo));
+      syncTodos(revertedTodos, "remote");
     }
   };
 
   const remove = async (id: string) => {
-    const previousTodos = todos;
+    const previousTodos = todosRef.current;
     const target = previousTodos.find((todo) => todo.id === id);
     const persistedId = target ? getPersistedId(target) : id;
     const nextTodos = previousTodos.filter((todo) => todo.id !== id);
-    setTodos(nextTodos);
-    setTodoCache(nextTodos.map(toSharedTodo), storageMode);
+    syncTodos(nextTodos, storageMode);
 
     if (storageMode === "local") {
       saveLocalTodos(nextTodos);
@@ -558,8 +567,7 @@ export function TodoPanel() {
       }
       dispatchDashboardRefresh();
     } catch {
-      setTodos(previousTodos);
-      setTodoCache(previousTodos.map(toSharedTodo), "remote");
+      syncTodos(previousTodos, storageMode);
     }
   };
 
@@ -606,6 +614,7 @@ export function TodoPanel() {
           {visibleTodos.map((t) => (
             <motion.div
               key={t.id}
+              layout="position"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: t.done ? 0.72 : 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
@@ -649,13 +658,13 @@ export function TodoPanel() {
                 className="h-4 w-4 shrink-0 rounded-full border border-primary/40 cursor-pointer accent-primary"
               />
               <motion.span
-                initial={false}
+                initial={{ opacity: 1 }}
                 animate={{ opacity: t.done ? 0.6 : 1 }}
-                className={`flex-1 text-sm ${t.done ? "line-through text-muted-foreground" : "text-foreground"}`}
+                className={`min-w-0 flex-1 truncate text-sm ${t.done ? "line-through text-muted-foreground" : "text-foreground"}`}
               >
                 {t.text}
               </motion.span>
-              <Badge variant="outline" className="h-5 px-2 text-[10px]">
+              <Badge variant="outline" className="h-5 w-[72px] shrink-0 justify-center px-2 text-[10px]">
                 {t.difficulty ?? "EASY"}
               </Badge>
               <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}>

@@ -19,6 +19,12 @@ type DashboardSnapshot = {
     weekStart: string;
     weekEnd: string;
   };
+  allTimeSummary: {
+    studiedMinutes: number;
+    focusSessions: number;
+    todosCompleted: number;
+    todosPlanned: number;
+  };
   streakDays: number;
   streakBreakAt: string | null;
   dailySeries: Array<{ day: string; label: string; studiedMinutes: number; focusSessions: number }>;
@@ -41,7 +47,8 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
     .map((n) => n[0].toUpperCase())
     .join("");
 
-  const totalStudyMinutes = snapshot?.weekSummary.studiedMinutes ?? 0;
+  const totalStudyMinutes = snapshot?.allTimeSummary.studiedMinutes ?? 0;
+  const totalFocusSessions = snapshot?.allTimeSummary.focusSessions ?? 0;
   const formatStudyTime = (minutes: number) => {
     const safeMinutes = Math.max(0, Math.floor(minutes));
     const hours = Math.floor(safeMinutes / 60);
@@ -62,8 +69,8 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
   const totalXp = snapshot?.xpSummary.totalXp ?? 0;
   const xpLevel = snapshot?.xpSummary.level ?? 1;
   const streakDays = snapshot?.streakDays ?? 0;
-  const weekStudyDays = snapshot?.weekSummary.studyDays ?? 0;
-  const weekTotalSessions = snapshot?.weekSummary.focusSessions ?? 0;
+  const allTimeTasksDone = snapshot?.allTimeSummary.todosCompleted ?? 0;
+  const allTimeTasksPlanned = snapshot?.allTimeSummary.todosPlanned ?? 0;
 
   const handleLogout = async () => {
     try {
@@ -182,10 +189,10 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
             </div>
           </div>
 
-          {/* This Week Stats */}
+          {/* All Time Stats */}
           <div className="space-y-4 pt-4 border-t border-border/20">
             <h3 className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">
-              This Week
+              All Time
             </h3>
 
             <div className="grid gap-3">
@@ -196,8 +203,8 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
                 className="p-3 rounded-lg bg-secondary/10 border border-border/20"
               >
                 <div className="flex justify-between items-center">
-                  <p className="text-sm text-muted-foreground">Study Days</p>
-                  <p className="font-semibold">{weekStudyDays} days</p>
+                  <p className="text-sm text-muted-foreground">Study Time</p>
+                  <p className="font-semibold">{formatStudyTime(totalStudyMinutes)}</p>
                 </div>
               </motion.div>
 
@@ -209,7 +216,7 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
               >
                 <div className="flex justify-between items-center">
                   <p className="text-sm text-muted-foreground">Focus Sessions</p>
-                  <p className="font-semibold">{weekTotalSessions}</p>
+                  <p className="font-semibold">{totalFocusSessions}</p>
                 </div>
               </motion.div>
 
@@ -221,7 +228,7 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
               >
                 <div className="flex justify-between items-center">
                   <p className="text-sm text-muted-foreground">Tasks Done</p>
-                  <p className="font-semibold">{snapshot?.weekSummary.todosCompleted ?? 0}</p>
+                  <p className="font-semibold">{allTimeTasksDone} of {allTimeTasksPlanned}</p>
                 </div>
               </motion.div>
             </div>
