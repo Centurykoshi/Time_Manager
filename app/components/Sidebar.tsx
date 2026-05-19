@@ -5,6 +5,7 @@ import { Home, ListTodo, Target, Trophy } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { getGradientColors } from "@/lib/color-utils";
+import type { DashboardSnapshot } from "@/lib/dashboard-types";
 import {
   Sidebar as SidebarShell,
   SidebarContent,
@@ -26,30 +27,6 @@ import {
 import { UserSummaryModal } from "./UserSummaryModal";
 
 type SidebarPage = "main" | "todos" | "goals" | "xp";
-
-type DashboardSnapshot = {
-  todosSummary: { total: number; done: number; open: number };
-  goalsSummary: { total: number };
-  xpSummary: { totalXp: number; level: number };
-  todaySummary: { studiedMinutes: number; focusSessions: number; todosCompleted: number; todosPlanned: number };
-  weekSummary: {
-    studiedMinutes: number;
-    focusSessions: number;
-    todosCompleted: number;
-    studyDays: number;
-    weekStart: string;
-    weekEnd: string;
-  };
-  allTimeSummary: {
-    studiedMinutes: number;
-    focusSessions: number;
-    todosCompleted: number;
-    todosPlanned: number;
-  };
-  streakDays: number;
-  streakBreakAt: string | null;
-  dailySeries: Array<{ day: string; label: string; studiedMinutes: number; focusSessions: number }>;
-};
 
 interface SidebarProps {
   activePage: SidebarPage;

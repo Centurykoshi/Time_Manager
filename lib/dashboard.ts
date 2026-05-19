@@ -6,50 +6,7 @@ import { prisma } from "./prisma";
 import { auth } from "./auth";
 import { getXpLevel, MAX_DAILY_XP } from "./xp";
 import { addDaysToDateKey, dateFromKey, getWeekdayInTimeZone, startOfWeekKeyInTimeZone, toDateKeyInTimeZone } from "./timezone";
-
-export type DashboardSnapshot = {
-  todosSummary: {
-    total: number;
-    done: number;
-    open: number;
-  };
-  goalsSummary: {
-    total: number;
-  };
-  xpSummary: {
-    totalXp: number;
-    level: number;
-  };
-  todaySummary: {
-    studiedMinutes: number;
-    focusSessions: number;
-    todosCompleted: number;
-    todosPlanned: number;
-  };
-  weekSummary: {
-    studiedMinutes: number;
-    focusSessions: number;
-    todosCompleted: number;
-    todosPlanned: number;
-    studyDays: number;
-    weekStart: string;
-    weekEnd: string;
-  };
-  allTimeSummary: {
-    studiedMinutes: number;
-    focusSessions: number;
-    todosCompleted: number;
-    todosPlanned: number;
-  };
-  streakDays: number;
-  streakBreakAt: string | null;
-  dailySeries: Array<{
-    day: string;
-    label: string;
-    studiedMinutes: number;
-    focusSessions: number;
-  }>;
-};
+import type { DashboardSnapshot } from "./dashboard-types";
 
 const dashboardEmail = process.env.DASHBOARD_USER_EMAIL ?? "dashboard@focus.local";
 const dashboardName = process.env.DASHBOARD_USER_NAME ?? "Focus Dashboard";
@@ -181,6 +138,7 @@ export async function getDashboardSnapshot(timeZone = "UTC"): Promise<DashboardS
       select: {
         createdAt: true,
         isDone: true,
+        difficulty: true,
       },
     }),
     prisma.studySession.aggregate({
@@ -292,6 +250,47 @@ export async function getDashboardSnapshot(timeZone = "UTC"): Promise<DashboardS
   const totalXpRaw = xpRows[0]?.total_xp ?? 0;
   const totalXp = Number(totalXpRaw);
   const xpLevel = getXpLevel(totalXp);
+  const difficultyOrder = ["EASY", "MEDIUM", "HARD", "BOSS"] as const;
+  const difficultyCounts = difficultyOrder.map((level) => {
+    const levelTodos = allTodos.filter((todo) => todo.difficulty === level);
+    const total = levelTodos.length;
+    const completed = levelTodos.filter((todo) => todo.isDone).length;
+    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const percentOfTotal = todoTotal > 0 ? Math.round((total / todoTotal) * 100) : 0;
+    return { level, total, completed, completionRate, percentOfTotal };
+  });
+
+  const heatmapDays = Array.from({ length: 42 }, (_, index) => addDaysToDateKey(todayKey, index - 41, timeZone));
+  const maxHeatMinutes = Math.max(
+    1,
+    ...heatmapDays.map((key) => summaryByDay.get(key)?.studiedMinutes ?? 0),
+  );
+  const studyHeatmap = heatmapDays.map((dayKey) => {
+    const studiedMinutes = summaryByDay.get(dayKey)?.studiedMinutes ?? 0;
+    return {
+      day: dayKey,
+      label: getWeekdayInTimeZone(dateFromKey(dayKey), timeZone),
+      studiedMinutes,
+      intensity: Math.min(4, Math.floor((studiedMinutes / maxHeatMinutes) * 4)),
+    };
+  });
+
+  const last14DayKeys = Array.from({ length: 14 }, (_, index) => addDaysToDateKey(todayKey, index - 13, timeZone));
+  const totalLast14 = last14DayKeys.reduce((sum, key) => sum + (summaryByDay.get(key)?.studiedMinutes ?? 0), 0);
+  const averageDailyMinutesLast14Days = Math.round(totalLast14 / 14);
+  const averageSessionMinutes = allTimeSummary.focusSessions > 0
+    ? Math.round(allTimeSummary.studiedMinutes / allTimeSummary.focusSessions)
+    : 0;
+
+  const bestDay = [...summaryByDay.entries()].reduce<{ key: string; minutes: number } | null>((best, [key, value]) => {
+    if (!best || value.studiedMinutes > best.minutes) {
+      return { key, minutes: value.studiedMinutes };
+    }
+    return best;
+  }, null);
+  const mostFocusedDayLabel = bestDay
+    ? `${getWeekdayInTimeZone(dateFromKey(bestDay.key), timeZone)} (${bestDay.minutes}m)`
+    : "No sessions yet";
 
   return {
     todosSummary: {
@@ -321,6 +320,18 @@ export async function getDashboardSnapshot(timeZone = "UTC"): Promise<DashboardS
     streakDays: streakState.streakDays,
     streakBreakAt: streakState.streakBreakAt,
     dailySeries,
+    studyHeatmap,
+    taskDifficulty: {
+      total: todoTotal,
+      completed: todoDone,
+      completionRate: todoTotal > 0 ? Math.round((todoDone / todoTotal) * 100) : 0,
+      byDifficulty: difficultyCounts.map((entry) => ({ ...entry })),
+    },
+    productivity: {
+      averageSessionMinutes,
+      averageDailyMinutesLast14Days,
+      mostFocusedDayLabel,
+    },
   };
 }
 

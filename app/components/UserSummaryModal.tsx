@@ -1,40 +1,34 @@
-"use client";
+﻿"use client";
 
-import { useState } from "react";
 import { motion } from "framer-motion";
-import { Clock, CheckCircle2, Trophy, TrendingUp } from "lucide-react";
+import { Clock, Flame, Gauge, LogOut, Sparkles, Target, Trophy } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader } from "@/app/components/ui/sheet";
 import { getGradientColors } from "@/lib/color-utils";
-
-type DashboardSnapshot = {
-  todosSummary: { total: number; done: number; open: number };
-  goalsSummary: { total: number };
-  xpSummary: { totalXp: number; level: number };
-  todaySummary: { studiedMinutes: number; focusSessions: number; todosCompleted: number; todosPlanned: number };
-  weekSummary: {
-    studiedMinutes: number;
-    focusSessions: number;
-    todosCompleted: number;
-    studyDays: number;
-    weekStart: string;
-    weekEnd: string;
-  };
-  allTimeSummary: {
-    studiedMinutes: number;
-    focusSessions: number;
-    todosCompleted: number;
-    todosPlanned: number;
-  };
-  streakDays: number;
-  streakBreakAt: string | null;
-  dailySeries: Array<{ day: string; label: string; studiedMinutes: number; focusSessions: number }>;
-};
+import type { DashboardSnapshot } from "@/lib/dashboard-types";
 
 interface UserSummaryModalProps {
   isOpen: boolean;
   onClose: () => void;
   user?: { email?: string; name?: string; image?: string; provider?: string };
   snapshot?: DashboardSnapshot | null;
+}
+
+function formatStudyTime(minutes: number) {
+  const safeMinutes = Math.max(0, Math.floor(minutes));
+  const hours = Math.floor(safeMinutes / 60);
+  const remainingMinutes = safeMinutes % 60;
+
+  if (hours <= 0) return `${safeMinutes}m`;
+  if (remainingMinutes === 0) return `${hours}h`;
+  return `${hours}h ${remainingMinutes}m`;
+}
+
+function heatColor(intensity: number) {
+  if (intensity <= 0) return "bg-zinc-800/70";
+  if (intensity === 1) return "bg-amber-900/60";
+  if (intensity === 2) return "bg-amber-700/70";
+  if (intensity === 3) return "bg-yellow-600/80";
+  return "bg-yellow-400";
 }
 
 export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummaryModalProps) {
@@ -47,31 +41,6 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
     .map((n) => n[0].toUpperCase())
     .join("");
 
-  const totalStudyMinutes = snapshot?.allTimeSummary.studiedMinutes ?? 0;
-  const totalFocusSessions = snapshot?.allTimeSummary.focusSessions ?? 0;
-  const formatStudyTime = (minutes: number) => {
-    const safeMinutes = Math.max(0, Math.floor(minutes));
-    const hours = Math.floor(safeMinutes / 60);
-    const remainingMinutes = safeMinutes % 60;
-
-    if (hours <= 0) {
-      return `${safeMinutes} minute${safeMinutes === 1 ? "" : "s"}`;
-    }
-
-    if (remainingMinutes === 0) {
-      return `${hours} hour${hours === 1 ? "" : "s"}`;
-    }
-
-    return `${hours} hour${hours === 1 ? "" : "s"} ${remainingMinutes} minute${remainingMinutes === 1 ? "" : "s"}`;
-  };
-  const totalTasksDone = snapshot?.todosSummary.done ?? 0;
-  const totalTasksPlanned = snapshot?.todosSummary.total ?? 0;
-  const totalXp = snapshot?.xpSummary.totalXp ?? 0;
-  const xpLevel = snapshot?.xpSummary.level ?? 1;
-  const streakDays = snapshot?.streakDays ?? 0;
-  const allTimeTasksDone = snapshot?.allTimeSummary.todosCompleted ?? 0;
-  const allTimeTasksPlanned = snapshot?.allTimeSummary.todosPlanned ?? 0;
-
   const handleLogout = async () => {
     try {
       const response = await fetch("/api/logout", {
@@ -81,27 +50,34 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
       if (response.ok) {
         window.location.href = "/";
       }
-    } catch (error) {
-      console.error("Logout failed:", error);
+    } catch {
       window.location.href = "/";
     }
   };
 
+  const studyHeatmap = snapshot?.studyHeatmap ?? [];
+  const heatWeeks = Array.from(
+    { length: Math.ceil(studyHeatmap.length / 7) },
+    (_, weekIndex) => studyHeatmap.slice(weekIndex * 7, weekIndex * 7 + 7),
+  );
+
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent title="User summary" side="right" className="w-full sm:w-96 bg-background/95 backdrop-blur-sm border-l border-border/30 p-0">
-        <SheetHeader className="border-b border-border/30 px-6 py-4 flex flex-row items-center justify-between space-y-0">
+      <SheetContent
+        title="Your analytics"
+        side="right"
+        className="w-full sm:w-[30rem] bg-background/95 backdrop-blur-xl border-l border-border/30 p-0"
+      >
+        <SheetHeader className="border-b border-border/30 px-6 py-5 flex flex-row items-center justify-between space-y-0">
           <div className="flex items-center gap-3">
             <div
-              className="h-10 w-10 rounded-full border border-border/30 flex items-center justify-center text-sm font-semibold shrink-0 relative overflow-hidden shadow-sm"
+              className="h-11 w-11 rounded-full border border-border/30 flex items-center justify-center text-sm font-semibold shrink-0 relative overflow-hidden shadow-sm"
               style={{
                 background: isGoogle
                   ? "linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.88) 100%)"
                   : `linear-gradient(135deg, ${color1} 0%, ${color2} 100%)`,
               }}
             >
-              <div className="absolute inset-0 bg-primary/14 transition-colors" />
-              <div className="absolute inset-0 bg-background/8 mix-blend-soft-light" />
               {!isGoogle && <span className="relative z-10 text-white/90 drop-shadow-sm">{initials}</span>}
             </div>
             <div>
@@ -111,139 +87,125 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
           </div>
         </SheetHeader>
 
-        <div className="px-6 py-6 space-y-6 overflow-auto max-h-[calc(100vh-100px)]">
-          {/* Stats Grid */}
-          <div className="space-y-4">
-            <h3 className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">
-              Summary Statistics
-            </h3>
-
-            <div className="grid gap-3">
-              {/* Total Study Hours */}
+        <div className="px-6 py-6 space-y-6 overflow-auto max-h-[calc(100vh-96px)]">
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              {
+                label: "Total XP",
+                value: `${snapshot?.xpSummary.totalXp ?? 0}`,
+                sub: `Level ${snapshot?.xpSummary.level ?? 1}`,
+                Icon: Trophy,
+              },
+              {
+                label: "Streak",
+                value: `${snapshot?.streakDays ?? 0}d`,
+                sub: "Keep momentum",
+                Icon: Flame,
+              },
+              {
+                label: "Study Time",
+                value: formatStudyTime(snapshot?.allTimeSummary.studiedMinutes ?? 0),
+                sub: `${snapshot?.allTimeSummary.focusSessions ?? 0} sessions`,
+                Icon: Clock,
+              },
+              {
+                label: "Task Completion",
+                value: `${snapshot?.taskDifficulty.completionRate ?? 0}%`,
+                sub: `${snapshot?.todosSummary.done ?? 0}/${snapshot?.todosSummary.total ?? 0}`,
+                Icon: Target,
+              },
+            ].map((item, index) => (
               <motion.div
-                initial={{ opacity: 0, y: 10 }}
+                key={item.label}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="p-4 rounded-lg bg-secondary/20 backdrop-blur-sm border border-border/20 hover:border-border/40 transition-colors"
+                transition={{ delay: 0.05 + index * 0.05 }}
+                className="rounded-xl bg-gradient-to-br from-yellow-400/10 via-amber-500/5 to-transparent p-3"
               >
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Study Hours</p>
-                    <p className="text-2xl font-bold mt-2">{formatStudyTime(totalStudyMinutes)}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{totalStudyMinutes} minutes total</p>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{item.label}</p>
+                    <p className="mt-1 text-lg font-semibold">{item.value}</p>
+                    <p className="text-[11px] text-muted-foreground">{item.sub}</p>
                   </div>
-                  <Clock className="h-5 w-5 text-blue-500 opacity-70" />
+                  <item.Icon className="h-4 w-4 text-yellow-300/80 mt-0.5" />
                 </div>
               </motion.div>
-
-              {/* Total Tasks Done */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15 }}
-                className="p-4 rounded-lg bg-secondary/20 backdrop-blur-sm border border-border/20 hover:border-border/40 transition-colors"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Tasks Completed</p>
-                    <p className="text-2xl font-bold mt-2">{totalTasksDone}</p>
-                    <p className="text-xs text-muted-foreground mt-1">of {totalTasksPlanned} total tasks</p>
-                  </div>
-                  <CheckCircle2 className="h-5 w-5 text-emerald-500 opacity-70" />
-                </div>
-              </motion.div>
-
-              {/* Total XP */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="p-4 rounded-lg bg-secondary/20 backdrop-blur-sm border border-border/20 hover:border-border/40 transition-colors"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Experience</p>
-                    <p className="text-2xl font-bold mt-2">{totalXp.toLocaleString()} XP</p>
-                    <p className="text-xs text-muted-foreground mt-1">Level {xpLevel}</p>
-                  </div>
-                  <Trophy className="h-5 w-5 text-amber-500 opacity-70" />
-                </div>
-              </motion.div>
-
-              {/* Streak */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.25 }}
-                className="p-4 rounded-lg bg-secondary/20 backdrop-blur-sm border border-border/20 hover:border-border/40 transition-colors"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Current Streak</p>
-                    <p className="text-2xl font-bold mt-2">{streakDays} days</p>
-                    <p className="text-xs text-muted-foreground mt-1">Keep it going!</p>
-                  </div>
-                  <TrendingUp className="h-5 w-5 text-orange-500 opacity-70" />
-                </div>
-              </motion.div>
-            </div>
+            ))}
           </div>
 
-          {/* All Time Stats */}
-          <div className="space-y-4 pt-4 border-t border-border/20">
-            <h3 className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">
-              All Time
-            </h3>
-
-            <div className="grid gap-3">
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="p-3 rounded-lg bg-secondary/10 border border-border/20"
-              >
-                <div className="flex justify-between items-center">
-                  <p className="text-sm text-muted-foreground">Study Time</p>
-                  <p className="font-semibold">{formatStudyTime(totalStudyMinutes)}</p>
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.35 }}
-                className="p-3 rounded-lg bg-secondary/10 border border-border/20"
-              >
-                <div className="flex justify-between items-center">
-                  <p className="text-sm text-muted-foreground">Focus Sessions</p>
-                  <p className="font-semibold">{totalFocusSessions}</p>
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-                className="p-3 rounded-lg bg-secondary/10 border border-border/20"
-              >
-                <div className="flex justify-between items-center">
-                  <p className="text-sm text-muted-foreground">Tasks Done</p>
-                  <p className="font-semibold">{allTimeTasksDone} of {allTimeTasksPlanned}</p>
-                </div>
-              </motion.div>
+          <section className="rounded-xl border border-border/30 bg-card/40 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-yellow-300/90" />
+              <h3 className="text-sm font-semibold">Study Heatmap (Last 6 Weeks)</h3>
             </div>
-          </div>
+            <div className="flex gap-1.5">
+              {heatWeeks.map((week, index) => (
+                <div key={`week-${index}`} className="grid grid-rows-7 gap-1.5">
+                  {week.map((cell) => (
+                    <div
+                      key={cell.day}
+                      title={`${cell.day}: ${cell.studiedMinutes}m`}
+                      className={`h-3 w-3 rounded-[2px] ${heatColor(cell.intensity)}`}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </section>
 
-          {/* Logout Button */}
-          <motion.button
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.45 }}
+          <section className="rounded-xl border border-border/30 bg-card/40 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Gauge className="h-4 w-4 text-amber-300/90" />
+              <h3 className="text-sm font-semibold">Task Difficulty Analytics</h3>
+            </div>
+            <div className="space-y-3">
+              {(snapshot?.taskDifficulty.byDifficulty ?? []).map((row) => (
+                <div key={row.level} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium">{row.level}</span>
+                    <span className="text-muted-foreground">
+                      {row.completed}/{row.total} done - {row.percentOfTotal}% mix
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted/30 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-amber-500 via-yellow-400 to-yellow-200"
+                      style={{ width: `${row.completionRate}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-border/30 bg-card/40 p-4">
+            <h3 className="text-sm font-semibold mb-3">Focus Quality</h3>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-lg bg-secondary/20 p-2">
+                <p className="text-[10px] uppercase text-muted-foreground">Avg Session</p>
+                <p className="text-sm font-semibold mt-1">{snapshot?.productivity.averageSessionMinutes ?? 0}m</p>
+              </div>
+              <div className="rounded-lg bg-secondary/20 p-2">
+                <p className="text-[10px] uppercase text-muted-foreground">Avg Daily (14d)</p>
+                <p className="text-sm font-semibold mt-1">
+                  {snapshot?.productivity.averageDailyMinutesLast14Days ?? 0}m
+                </p>
+              </div>
+              <div className="rounded-lg bg-secondary/20 p-2">
+                <p className="text-[10px] uppercase text-muted-foreground">Best Day</p>
+                <p className="text-xs font-semibold mt-1 truncate">{snapshot?.productivity.mostFocusedDayLabel ?? "-"}</p>
+              </div>
+            </div>
+          </section>
+
+          <button
             onClick={handleLogout}
-            className="w-full mt-6 px-4 py-2 rounded-lg text-sm font-semibold text-red-500 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 hover:border-red-500/50 transition-all"
+            className="w-full mt-2 px-4 py-2 rounded-lg text-sm font-semibold text-red-400 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 transition-all flex items-center justify-center gap-2"
           >
+            <LogOut className="h-4 w-4" />
             Logout
-          </motion.button>
+          </button>
         </div>
       </SheetContent>
     </Sheet>

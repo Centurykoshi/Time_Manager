@@ -23,30 +23,7 @@ import { getTimeZoneHeaders } from "@/lib/timezone";
 import { loadRemoteXp } from "@/lib/xp-cache";
 import { loadRemoteGoals } from "@/lib/goal-cache";
 import { loadRemoteTodos } from "@/lib/todo-cache";
-
-type DashboardSnapshot = {
-  todosSummary: { total: number; done: number; open: number };
-  goalsSummary: { total: number };
-  xpSummary: { totalXp: number; level: number };
-  todaySummary: { studiedMinutes: number; focusSessions: number; todosCompleted: number; todosPlanned: number };
-  weekSummary: {
-    studiedMinutes: number;
-    focusSessions: number;
-    todosCompleted: number;
-    studyDays: number;
-    weekStart: string;
-    weekEnd: string;
-  };
-  allTimeSummary: {
-    studiedMinutes: number;
-    focusSessions: number;
-    todosCompleted: number;
-    todosPlanned: number;
-  };
-  streakDays: number;
-  streakBreakAt: string | null;
-  dailySeries: Array<{ day: string; label: string; studiedMinutes: number; focusSessions: number }>;
-};
+import type { DashboardSnapshot } from "@/lib/dashboard-types";
 
 type SidebarPage = "main" | "todos" | "goals" | "xp";
 
@@ -354,4 +331,3 @@ function StreakCountdown({ snapshot }: { snapshot: DashboardSnapshot | null }) {
 
   return <>{`[${formatTimeUntilStreakBreak(now, snapshot)} left until it breaks]`}</>;
 }
-
