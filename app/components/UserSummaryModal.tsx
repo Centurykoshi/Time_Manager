@@ -1,8 +1,8 @@
 ﻿"use client";
 
 import { motion } from "framer-motion";
-import { Clock, Flame, Gauge, LogOut, Sparkles, Target, Trophy } from "lucide-react";
-import { Sheet, SheetContent, SheetHeader } from "@/app/components/ui/sheet";
+import { CheckCircle2, Clock, Flame, LogOut, Trophy } from "lucide-react";
+import { Sheet, SheetContent, SheetDescription, SheetHeader } from "@/app/components/ui/sheet";
 import { getGradientColors } from "@/lib/color-utils";
 import type { DashboardSnapshot } from "@/lib/dashboard-types";
 
@@ -21,14 +21,6 @@ function formatStudyTime(minutes: number) {
   if (hours <= 0) return `${safeMinutes}m`;
   if (remainingMinutes === 0) return `${hours}h`;
   return `${hours}h ${remainingMinutes}m`;
-}
-
-function heatColor(intensity: number) {
-  if (intensity <= 0) return "bg-zinc-800/70";
-  if (intensity === 1) return "bg-amber-900/60";
-  if (intensity === 2) return "bg-amber-700/70";
-  if (intensity === 3) return "bg-yellow-600/80";
-  return "bg-yellow-400";
 }
 
 export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummaryModalProps) {
@@ -55,12 +47,6 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
     }
   };
 
-  const studyHeatmap = snapshot?.studyHeatmap ?? [];
-  const heatWeeks = Array.from(
-    { length: Math.ceil(studyHeatmap.length / 7) },
-    (_, weekIndex) => studyHeatmap.slice(weekIndex * 7, weekIndex * 7 + 7),
-  );
-
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent
@@ -85,10 +71,13 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
               <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
             </div>
           </div>
+          <SheetDescription className="sr-only">
+            User summary with key productivity stats including streak, tasks completed, and focus time.
+          </SheetDescription>
         </SheetHeader>
 
         <div className="px-6 py-6 space-y-6 overflow-auto max-h-[calc(100vh-96px)]">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             {[
               {
                 label: "Total XP",
@@ -103,16 +92,16 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
                 Icon: Flame,
               },
               {
-                label: "Study Time",
+                label: "Tasks Completed",
+                value: `${snapshot?.todosSummary.done ?? 0}`,
+                sub: `${snapshot?.todosSummary.total ?? 0} total tasks`,
+                Icon: CheckCircle2,
+              },
+              {
+                label: "Focus Time",
                 value: formatStudyTime(snapshot?.allTimeSummary.studiedMinutes ?? 0),
                 sub: `${snapshot?.allTimeSummary.focusSessions ?? 0} sessions`,
                 Icon: Clock,
-              },
-              {
-                label: "Task Completion",
-                value: `${snapshot?.taskDifficulty.completionRate ?? 0}%`,
-                sub: `${snapshot?.todosSummary.done ?? 0}/${snapshot?.todosSummary.total ?? 0}`,
-                Icon: Target,
               },
             ].map((item, index) => (
               <motion.div
@@ -135,66 +124,21 @@ export function UserSummaryModal({ isOpen, onClose, user, snapshot }: UserSummar
           </div>
 
           <section className="rounded-xl border border-border/30 bg-card/40 p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-yellow-300/90" />
-              <h3 className="text-sm font-semibold">Study Heatmap (Last 6 Weeks)</h3>
+            <div className="mb-3">
+              <h3 className="text-sm font-semibold">Quick Overview</h3>
             </div>
-            <div className="flex gap-1.5">
-              {heatWeeks.map((week, index) => (
-                <div key={`week-${index}`} className="grid grid-rows-7 gap-1.5">
-                  {week.map((cell) => (
-                    <div
-                      key={cell.day}
-                      title={`${cell.day}: ${cell.studiedMinutes}m`}
-                      className={`h-3 w-3 rounded-[2px] ${heatColor(cell.intensity)}`}
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-border/30 bg-card/40 p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <Gauge className="h-4 w-4 text-amber-300/90" />
-              <h3 className="text-sm font-semibold">Task Difficulty Analytics</h3>
-            </div>
-            <div className="space-y-3">
-              {(snapshot?.taskDifficulty.byDifficulty ?? []).map((row) => (
-                <div key={row.level} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-medium">{row.level}</span>
-                    <span className="text-muted-foreground">
-                      {row.completed}/{row.total} done - {row.percentOfTotal}% mix
-                    </span>
-                  </div>
-                  <div className="h-2 rounded-full bg-muted/30 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-amber-500 via-yellow-400 to-yellow-200"
-                      style={{ width: `${row.completionRate}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-border/30 bg-card/40 p-4">
-            <h3 className="text-sm font-semibold mb-3">Focus Quality</h3>
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="rounded-lg bg-secondary/20 p-2">
-                <p className="text-[10px] uppercase text-muted-foreground">Avg Session</p>
-                <p className="text-sm font-semibold mt-1">{snapshot?.productivity.averageSessionMinutes ?? 0}m</p>
+                <p className="text-[10px] uppercase text-muted-foreground">Today</p>
+                <p className="text-sm font-semibold mt-1">{snapshot?.todaySummary.todosCompleted ?? 0} done</p>
               </div>
               <div className="rounded-lg bg-secondary/20 p-2">
-                <p className="text-[10px] uppercase text-muted-foreground">Avg Daily (14d)</p>
-                <p className="text-sm font-semibold mt-1">
-                  {snapshot?.productivity.averageDailyMinutesLast14Days ?? 0}m
-                </p>
+                <p className="text-[10px] uppercase text-muted-foreground">This Week</p>
+                <p className="text-sm font-semibold mt-1">{snapshot?.weekSummary.todosCompleted ?? 0} done</p>
               </div>
               <div className="rounded-lg bg-secondary/20 p-2">
-                <p className="text-[10px] uppercase text-muted-foreground">Best Day</p>
-                <p className="text-xs font-semibold mt-1 truncate">{snapshot?.productivity.mostFocusedDayLabel ?? "-"}</p>
+                <p className="text-[10px] uppercase text-muted-foreground">Sessions</p>
+                <p className="text-sm font-semibold mt-1">{snapshot?.allTimeSummary.focusSessions ?? 0}</p>
               </div>
             </div>
           </section>

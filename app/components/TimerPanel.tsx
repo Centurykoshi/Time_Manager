@@ -768,6 +768,7 @@ export function TimerPanel() {
             textAnchor="middle"
             dominantBaseline="middle"
             className="text-xs fill-muted-foreground pointer-events-none"
+            initial={{ opacity: 1 }}
             animate={{ opacity: isDragging ? 0.5 : 1 }}
           >
             {status === "idle" ? (isDragging ? "Adjust time" : "Right-click drag / Scroll") : statusLabel}

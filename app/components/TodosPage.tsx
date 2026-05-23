@@ -25,7 +25,7 @@ type TodoItem = {
   difficulty?: Difficulty;
 };
 
-type TimeFilter = "today" | "week" | "month" | "year" | "allTime";
+type TimeFilter = "today" | "yesterday" | "week" | "month" | "year" | "allTime";
 
 type StorageMode = "remote" | "local";
 
@@ -125,6 +125,14 @@ export function TodosPage() {
     setTodoCache(nextTodos.map(toSharedTodo), source);
   };
 
+  const refreshRemoteTodos = async () => {
+    try {
+      await loadRemoteTodos(true);
+    } catch {
+      // Keep optimistic state if background refresh fails.
+    }
+  };
+
   useEffect(() => {
     let active = true;
     const unsubscribe = subscribeTodoCache((nextTodos) => {
@@ -171,6 +179,8 @@ export function TodosPage() {
   const getFilteredTodos = () => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
     const weekStart = new Date(today);
     weekStart.setDate(weekStart.getDate() - today.getDay());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -181,6 +191,8 @@ export function TodosPage() {
       switch (activeFilter) {
         case "today":
           return createdDate >= today && createdDate < new Date(today.getTime() + 24 * 60 * 60 * 1000);
+        case "yesterday":
+          return createdDate >= yesterday && createdDate < today;
         case "week":
           const weekEndDate = new Date(createdDate.getTime() + 7 * 24 * 60 * 60 * 1000);
           return now < weekEndDate;
@@ -192,6 +204,17 @@ export function TodosPage() {
         default:
           return true;
       }
+    });
+  };
+
+  const sortFilteredTodos = (items: TodoItem[]) => {
+    const shouldPrioritizeUndone =
+      activeFilter === "week" || activeFilter === "month" || activeFilter === "year";
+    return [...items].sort((left, right) => {
+      if (shouldPrioritizeUndone && left.isDone !== right.isDone) {
+        return left.isDone ? 1 : -1;
+      }
+      return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
     });
   };
 
@@ -268,6 +291,7 @@ export function TodosPage() {
         writeTodos(nextTodos, "remote");
         setNewTodoTitle("");
         window.dispatchEvent(new Event("dashboard:changed"));
+        void refreshRemoteTodos();
       } else {
         addLocalTodo();
       }
@@ -303,6 +327,7 @@ export function TodosPage() {
         const nextTodos = todosRef.current.map((todo) => (todo.id === id ? payload.todo : todo));
         writeTodos(nextTodos, "remote");
         window.dispatchEvent(new Event("dashboard:changed"));
+        void refreshRemoteTodos();
       } else {
         const nextTodos = todosRef.current.map((todo) => (todo.id === id ? { ...todo, isDone: !currentStatus } : todo));
         syncTodos(nextTodos, "local");
@@ -334,6 +359,7 @@ export function TodosPage() {
         const nextTodos = todosRef.current.filter((todo) => todo.id !== id);
         writeTodos(nextTodos, "remote");
         window.dispatchEvent(new Event("dashboard:changed"));
+        void refreshRemoteTodos();
       } else {
         const nextTodos = todosRef.current.filter((todo) => todo.id !== id);
         syncTodos(nextTodos, "local");
@@ -347,11 +373,12 @@ export function TodosPage() {
     }
   };
 
-  const filteredTodos = getFilteredTodos();
+  const filteredTodos = sortFilteredTodos(getFilteredTodos());
   const completedCount = filteredTodos.filter((t) => t.isDone).length;
 
   const filters: { key: TimeFilter; label: string }[] = [
     { key: "today", label: "Today" },
+    { key: "yesterday", label: "Yesterday" },
     { key: "week", label: "Week" },
     { key: "month", label: "Month" },
     { key: "year", label: "Year" },

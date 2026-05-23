@@ -231,6 +231,14 @@ export function TodoPanel() {
     setTodoCache(nextTodos.map(toSharedTodo), source);
   };
 
+  const refreshRemoteTodos = async () => {
+    try {
+      await loadRemoteTodos(true);
+    } catch {
+      // Keep optimistic state if background refresh fails.
+    }
+  };
+
   useEffect(() => {
     let active = true;
     const unsubscribe = subscribeTodoCache((nextTodos) => {
@@ -280,7 +288,7 @@ export function TodoPanel() {
 
   useEffect(() => {
     if (!activeTodoId) return;
-    if (!todos.some((todo) => todo.id === activeTodoId && isSameLocalDay(todo.createdAt, now))) {
+    if (!todos.some((todo) => todo.id === activeTodoId)) {
       setActiveTodoId(null);
     }
   }, [activeTodoId, now, todos]);
@@ -325,6 +333,10 @@ export function TodoPanel() {
 
       return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
     });
+  const carryOverTodos = todos
+    .filter((todo) => !todo.done && !isSameLocalDay(todo.createdAt, now))
+    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+  const panelTodos = [...visibleTodos, ...carryOverTodos];
   const doneCount = visibleTodos.filter((todo) => todo.done).length;
 
   const add = async () => {
@@ -399,6 +411,7 @@ export function TodoPanel() {
       showTaskToast(`Task added: ${payload.todo.title}`);
 
       dispatchDashboardRefresh();
+      void refreshRemoteTodos();
     } catch {
       // API failed — fall back to local storage with the temp ID
       setTodos((current) => {
@@ -474,6 +487,7 @@ export function TodoPanel() {
       }
 
       dispatchDashboardRefresh();
+      void refreshRemoteTodos();
     } catch {
       syncTodos(optimisticTodos, "local");
       saveLocalTodos(optimisticTodos);
@@ -538,6 +552,7 @@ export function TodoPanel() {
         play("changeDifficulty");
         showTaskToast(`Task difficulty changed: ${target.text} (${formatDifficultyLabel(difficulty)})`);
       }
+      void refreshRemoteTodos();
     } catch {
       const revertedTodos = todosRef.current.map((todo) => (todo.id === id ? { ...todo, difficulty: target.difficulty } : todo));
       syncTodos(revertedTodos, "remote");
@@ -566,6 +581,7 @@ export function TodoPanel() {
         showTaskToast(`Task removed: ${target.text}`);
       }
       dispatchDashboardRefresh();
+      void refreshRemoteTodos();
     } catch {
       syncTodos(previousTodos, storageMode);
     }
@@ -611,7 +627,7 @@ export function TodoPanel() {
         onMouseLeave={() => setActiveTodoId(null)}
       >
         <AnimatePresence initial={false}>
-          {visibleTodos.map((t) => (
+          {panelTodos.map((t) => (
             <motion.div
               key={t.id}
               layout="position"
@@ -623,7 +639,9 @@ export function TodoPanel() {
               className={`group flex items-center gap-2 rounded-lg px-3 py-2 transition hover:bg-secondary/30 ${
                 activeTodoId === t.id
                   ? "bg-secondary/35 ring-1 ring-primary/40 ring-inset"
-                  : "bg-secondary/20"
+                  : carryOverTodos.some((todo) => todo.id === t.id)
+                    ? "border border-primary/40 bg-primary/10"
+                    : "bg-secondary/20"
               }`}
             >
               <div className="relative flex items-center justify-center">
@@ -681,7 +699,7 @@ export function TodoPanel() {
           ))}
         </AnimatePresence>
 
-        {!loading && visibleTodos.length === 0 ? (
+        {!loading && panelTodos.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border/40 p-6 text-center text-sm text-muted-foreground">
             No tasks yet. Add one to get started.
           </div>
